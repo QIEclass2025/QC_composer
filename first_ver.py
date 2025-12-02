@@ -534,6 +534,10 @@ class ComposerTab(QWidget):
             return
 
         QMessageBox.information(self,"Measurement Result",str(counts))
+    
+    def get_statevector(self):
+        qc = self.build_qiskit_circuit()
+        return Statevector.from_instruction(qc)
 
 
 # ============================================
