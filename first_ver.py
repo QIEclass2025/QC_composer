@@ -6,7 +6,8 @@ from typing import Dict, Tuple, Optional, List
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
     QMessageBox, QGraphicsView, QGraphicsScene, QGraphicsRectItem,
-    QGraphicsTextItem, QLabel, QTabWidget, QDialog, QTextEdit
+    QGraphicsTextItem, QLabel, QTabWidget, QDialog, QTextEdit,
+    QSplitter, QScrollArea, QListWidget, QListWidgetItem # QSplitter, QScrollArea, QListWidget 추가
 )
 from PyQt6.QtGui import QColor, QPen, QPainter, QFont, QBrush
 from PyQt6.QtCore import Qt, QRectF
@@ -312,17 +313,110 @@ class CircuitView(QGraphicsView):
 
 
 # ============================================
-# Tutorial Tab (dummy)
+# Tutorial Tab (with split screen)
 # ============================================
 class TutorialTab(QWidget):
+    # 튜토리얼 데이터 정의 (생략)
+    TUTORIAL_DATA = {
+        "1. Qubit과 Hadamard Gate": 
+            "## Qubit과 Hadamard Gate\n\n"
+            "**1. Qubit (양자 비트):** 고전적인 비트(0 또는 1)와 달리, 큐비트는 $\\left|0\\right\\rangle$과 $\\left|1\\right\\rangle$ 상태의 **중첩(Superposition)** 상태를 가질 수 있습니다. 이는 동시에 여러 값을 나타낼 수 있음을 의미하며, 계산의 병렬성을 부여합니다.\n\n"
+            "**2. Hadamard (H) Gate:** 이 게이트는 큐비트를 순수한 $\\left|0\\right\\rangle$ 또는 $\\left|1\\right\\rangle$ 상태에서 완벽한 중첩 상태로 만듭니다. 회로에 H 게이트를 추가하고 Run Measurement를 실행하여 결과를 확인해 보세요.",
+        
+        "2. CNOT과 Entanglement": 
+            "## CNOT과 Entanglement (얽힘)\n\n"
+            "**1. CNOT (Controlled-X):** 이 게이트는 두 큐비트에 작용합니다. 제어 큐비트(Control, '●')가 $\\left|1\\right\\rangle$일 때만 대상 큐비트(Target, '⊕')에 X(NOT) 연산을 적용합니다. 만약 제어 큐비트가 $\\left|0\\right\\rangle$이면 아무 일도 하지 않습니다.\n\n"
+            "**2. Entanglement (얽힘):** Qubit 0에 H 게이트를 적용한 다음, Qubit 0을 제어 큐비트로, Qubit 1을 대상 큐비트로 하는 CNOT 게이트를 적용해 보세요. 이 상태에서 두 큐비트는 **얽힘 상태(Bell State)**가 됩니다. 이 상태에서는 한 큐비트를 측정하면 다른 큐비트의 상태가 즉시 결정됩니다.",
+            
+        "3. 양자 푸리에 변환 (QFT) 기초": 
+            "## 양자 푸리에 변환 (QFT) 기초\n\n"
+            "QFT는 Shor의 알고리즘과 같은 복잡한 양자 알고리즘의 핵심 구성 요소입니다. 이는 고전적인 이산 푸리에 변환(DFT)의 양자 버전이며, 중첩된 양자 상태에서 주파수 정보를 추출하는 데 사용됩니다.\n\n"
+            "QFT는 주로 Hadamard 게이트와 조건부 위상 이동 게이트(Controlled Phase Shift Gate, Rz 게이트의 특정 형태)의 조합으로 구현됩니다. 3큐비트 QFT를 구성하여 그 효과를 실험해 보세요."
+    }
+
     def __init__(self):
         super().__init__()
-        lay=QVBoxLayout(self)
-        t=QLabel("Quantum Algorithm Tutorial (준비중)")
-        t.setFont(QFont("Segoe UI",12))
-        t.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lay.addWidget(t)
+        
+        main_layout = QVBoxLayout(self)
+        
+        # 제목 추가
+        title = QLabel("Quantum Circuit Composer - 튜토리얼")
+        title.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        main_layout.addWidget(title)
+        
+        # 제목과 분할 영역 사이의 간격을 줄입니다 (Stretch 제거 및 Spacing 조정)
+        main_layout.setSpacing(5) 
+        
+        # 튜토리얼 목록과 내용 영역 분할
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        main_layout.addWidget(splitter, stretch=1) # stretch=1로 설정하여 분할 영역이 공간을 최대한 차지하도록 함
+        
+        # ----------------------------------------
+        # 왼쪽 1/4: 튜토리얼 목록 (스크롤 가능)
+        # ----------------------------------------
+        list_area = QWidget()
+        list_layout = QVBoxLayout(list_area)
+        
+        # 스크롤 가능한 영역 설정
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        
+        list_container = QWidget()
+        self.tutorial_list_layout = QVBoxLayout(list_container)
+        self.tutorial_list_layout.setContentsMargins(5, 5, 5, 5) # 목록 내부 여백 조정
+        self.tutorial_list_layout.setSpacing(3) # 목록 버튼 간 간격 조정
+        
+        # 튜토리얼 버튼 동적 생성
+        for title_key in self.TUTORIAL_DATA:
+            btn = QPushButton(title_key)
+            btn.setFont(QFont("Segoe UI", 11, QFont.Weight.DemiBold)) 
+            # 람다 함수를 사용하여 클릭 시 튜토리얼 내용을 표시하도록 연결
+            btn.clicked.connect(lambda checked, key=title_key: self.display_tutorial(key))
+            self.tutorial_list_layout.addWidget(btn)
+            
+        self.tutorial_list_layout.addStretch() # 버튼들을 상단에 정렬
+        scroll.setWidget(list_container)
+        
+        list_layout.addWidget(scroll)
+        
+        # ----------------------------------------
+        # 오른쪽 3/4: 튜토리얼 내용 표시 영역
+        # ----------------------------------------
+        self.content_display = QTextEdit()
+        self.content_display.setReadOnly(True)
+        self.content_display.setPlaceholderText("왼쪽 목록에서 튜토리얼을 선택하세요.")
+        
+        # 초기 튜토리얼 표시
+        first_key = next(iter(self.TUTORIAL_DATA))
+        self.display_tutorial(first_key)
 
+        # QSplitter에 위젯 추가 및 비율 설정
+        splitter.addWidget(list_area)
+        splitter.addWidget(self.content_display)
+        
+        # 분할 비율을 조정하여 오른쪽 창을 더 넓게 만듭니다 (예: 1/5 지점)
+        # [200, 800] 또는 [150, 600] 등의 비율로 설정합니다.
+        # 현재 창 크기(1350)를 기준으로 1/5인 약 270 픽셀을 목록에 할당합니다.
+        splitter.setSizes([270, 1080]) # 1:4 비율 (20% vs 80%)에 가깝게 조정
+        
+    def display_tutorial(self, key: str):
+        """선택된 튜토리얼의 내용을 QTextEdit에 표시합니다."""
+        content = self.TUTORIAL_DATA.get(key, "선택된 튜토리얼 내용을 찾을 수 없습니다.")
+        
+        # 마크다운 텍스트를 HTML 형식으로 변환하여 더 잘 표시할 수 있음 (선택적)
+        html_content = self.markdown_to_html(content)
+        self.content_display.setText(html_content)
+
+    def markdown_to_html(self, markdown_text: str) -> str:
+        """간단한 마크다운을 HTML로 변환합니다 (QTextEdit 렌더링용)."""
+        html = markdown_text.replace('\n\n', '<br><br>')
+        html = html.replace('## ', '<h2>')
+        html = html.replace('**', '<b>')
+        html = html.replace('</b> (', '</b> (')
+        # LaTeX 식은 일반 텍스트로 남겨둡니다.
+        return html
+        
 
 # ============================================
 # Composer Tab
@@ -535,9 +629,9 @@ class ComposerTab(QWidget):
 
         QMessageBox.information(self,"Measurement Result",str(counts))
     
-    def get_statevector(self):
-        qc = self.build_qiskit_circuit()
-        return Statevector.from_instruction(qc)
+    # def get_statevector(self):
+    #     qc = self.build_qiskit_circuit()
+    #     return Statevector.from_instruction(qc)
 
 
 # ============================================
@@ -557,7 +651,7 @@ class MainWindow(QWidget):
 def main():
     app=QApplication(sys.argv)
     w=MainWindow()
-    w.resize(1350,700)
+    w.resize(1350,700) # 창 크기를 튜토리얼 탭에 맞게 조정했습니다.
     w.show()
     sys.exit(app.exec())
 
