@@ -1103,6 +1103,12 @@ class TutorialTab(QWidget):
         circuit_box = QHBoxLayout()
         self.view = CircuitView()
         self.palette = PaletteView(self.view)
+        CIRCUIT_HEIGHT = 550   # 원하는 높이 (조절 가능)
+
+        self.view.setFixedHeight(CIRCUIT_HEIGHT)
+        self.palette.setFixedHeight(CIRCUIT_HEIGHT)
+
+
 
         from PyQt6.QtWidgets import QSizePolicy
         self.view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -1115,22 +1121,42 @@ class TutorialTab(QWidget):
         self.step_instruction.setReadOnly(True)
         self.step_instruction.setMaximumHeight(160)
 
-        btns = QHBoxLayout()
+        # -----------------------------
+        # Buttons
+        # -----------------------------
         self.btn_check = QPushButton("Check")
         self.btn_hint = QPushButton("Hint")
         self.btn_reset = QPushButton("Reset")
         self.btn_next = QPushButton("Next")
 
-        btns.addWidget(self.btn_check)
-        btns.addWidget(self.btn_hint)
-        btns.addWidget(self.btn_reset)
-        btns.addStretch()
-        btns.addWidget(self.btn_next)
+        # --- Check / Hint / Reset (윗줄)
+        upper_btns = QHBoxLayout()
+        upper_btns.addWidget(self.btn_check)
+        upper_btns.addWidget(self.btn_hint)
+        upper_btns.addWidget(self.btn_reset)
+
+        # --- Next (아랫줄, 오른쪽 정렬)
+        lower_btns = QHBoxLayout()
+        lower_btns.addStretch()
+        lower_btns.addWidget(self.btn_next)
+
+        # --- 오른쪽 버튼 묶음 (세로)
+        right_btns = QVBoxLayout()
+        right_btns.addLayout(upper_btns)
+        right_btns.addLayout(lower_btns)
+
+        # --- 전체 하단 레이아웃
+        footer = QHBoxLayout()
+        footer.addStretch()      # 왼쪽 비우기
+        footer.addLayout(right_btns)
+
+
+    
 
         step_layout.addWidget(self.step_title)
-        step_layout.addLayout(circuit_box, stretch=1)
+        step_layout.addLayout(circuit_box)
         step_layout.addWidget(self.step_instruction)
-        step_layout.addLayout(btns)
+        step_layout.addLayout(footer)
 
         self.stack.addWidget(self.page_step)
 
