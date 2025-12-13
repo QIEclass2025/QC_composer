@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QGraphicsView, QGraphicsScene, QGraphicsRectItem,
     QGraphicsTextItem, QLabel, QPushButton, QMessageBox,
     QTabWidget, QDialog, QTextEdit, QInputDialog, QGraphicsDropShadowEffect,
-    QSplitter, QScrollArea, QSizePolicy    # tutorial용 import
+    QSplitter, QScrollArea, QSizePolicy,QListWidget,QStackedWidget     # tutorial용 import
 )
 from PyQt6.QtGui import QColor, QPen, QPainter, QFont, QBrush, QLinearGradient, QCursor, QDrag
 from PyQt6.QtCore import Qt, QRectF, QPointF, QMimeData
@@ -62,6 +62,17 @@ class TutorialStep:
     expected: Callable[[list], bool]
     hint: str
     auto_setup: Callable[[object], None] | None = None
+
+# ------------------------------------------------------------
+# Tutorial Definition (Meta Level)
+# ------------------------------------------------------------
+@dataclass
+class Tutorial:
+    name: str
+    description: str
+    steps: List[TutorialStep]
+
+
 
 # ============================================
 # [신규 추가] Bloch Sphere Visualization Canvas
@@ -1038,20 +1049,58 @@ class TutorialTab(QWidget):
     def __init__(self):
         super().__init__()
 
-        self.steps: List[TutorialStep] = self.build_steps()
-        self.current_step_index = 0
+        self.tutorials: List[Tutorial] = self.build_tutorials()
+        self.current_tutorial: Tutorial | None = None
+        self.current_step_index: int = 0
 
-        root = QVBoxLayout(self)
+        root = QHBoxLayout(self)
 
-        # ---- Title ----
-        self.title_label = QLabel()
-        self.title_label.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
-        root.addWidget(self.title_label)
+        # ======================================================
+        # LEFT : Tutorial List (1/4)
+        # ======================================================
+        self.list_widget = QListWidget()
+        for t in self.tutorials:
+            self.list_widget.addItem(t.name)
+        self.list_widget.setMaximumWidth(260)
+        root.addWidget(self.list_widget, stretch=1)
 
+        # ======================================================
+        # RIGHT : Content Area (3/4)
+        # ======================================================
+        self.stack = QStackedWidget()
+        root.addWidget(self.stack, stretch=3)
 
-        # ---- Circuit Area ----
+        # ---- Page 0 : Theory / Guide ----
+        self.page_intro = QWidget()
+        intro_layout = QVBoxLayout(self.page_intro)
+
+        self.intro_title = QLabel("튜토리얼을 선택하세요")
+        self.intro_title.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
+
+        self.intro_text = QTextEdit()
+        self.intro_text.setReadOnly(True)
+        self.intro_text.setText(
+            "왼쪽에서 튜토리얼을 선택한 뒤,\n"
+            "Next 버튼을 눌러 실습을 시작하세요.\n\n"
+            "이 영역에서는 기본 이론, 회로 구조, 학습 목표가 제공됩니다."
+        )
+
+        self.btn_start = QPushButton("Start Tutorial")
+
+        intro_layout.addWidget(self.intro_title)
+        intro_layout.addWidget(self.intro_text, stretch=1)
+        intro_layout.addWidget(self.btn_start, alignment=Qt.AlignmentFlag.AlignRight)
+
+        self.stack.addWidget(self.page_intro)
+
+        # ---- Page 1 : Interactive Step ----
+        self.page_step = QWidget()
+        step_layout = QVBoxLayout(self.page_step)
+
+        self.step_title = QLabel()
+        self.step_title.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
+
         circuit_box = QHBoxLayout()
-
         self.view = CircuitView()
         self.palette = PaletteView(self.view)
 
@@ -1061,95 +1110,91 @@ class TutorialTab(QWidget):
         circuit_box.addWidget(self.palette)
         circuit_box.addWidget(self.view, stretch=1)
 
-        root.addLayout(circuit_box, stretch=5)
+        self.step_instruction = QTextEdit()
+        self.step_instruction.setReadOnly(True)
+        self.step_instruction.setMaximumHeight(160)
 
-        # ---- Instruction ----
-        self.instruction_box = QTextEdit()
-        self.instruction_box.setReadOnly(True)
-        self.instruction_box.setMaximumHeight(180)
-        self.instruction_box.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Fixed
-        )
-        root.addWidget(self.instruction_box)
-
-
-        # ---- Control Buttons ----
         btns = QHBoxLayout()
         self.btn_check = QPushButton("Check")
         self.btn_hint = QPushButton("Hint")
+        self.btn_reset = QPushButton("Reset")
         self.btn_next = QPushButton("Next")
-        self.btn_reset = QPushButton("Reset Step")
 
         btns.addWidget(self.btn_check)
         btns.addWidget(self.btn_hint)
         btns.addWidget(self.btn_reset)
         btns.addStretch()
         btns.addWidget(self.btn_next)
-        root.addLayout(btns)
 
-        # ---- Signals ----
+        step_layout.addWidget(self.step_title)
+        step_layout.addLayout(circuit_box, stretch=1)
+        step_layout.addWidget(self.step_instruction)
+        step_layout.addLayout(btns)
+
+        self.stack.addWidget(self.page_step)
+
+        # ======================================================
+        # Signals
+        # ======================================================
+        self.btn_start.clicked.connect(self.start_tutorial)
         self.btn_check.clicked.connect(self.check_step)
         self.btn_hint.clicked.connect(self.show_hint)
         self.btn_next.clicked.connect(self.next_step)
         self.btn_reset.clicked.connect(self.reset_step)
 
-        self.load_step(0)
+        self.stack.setCurrentIndex(0)
 
     # --------------------------------------------------------
-    # Tutorial Step Definitions
+    # Tutorial Construction
     # --------------------------------------------------------
-    def build_steps(self) -> List[TutorialStep]:
-        return [
+    def build_tutorials(self) -> List[Tutorial]:
+        steps = [
             TutorialStep(
-                title="Step 1: Hadamard Gate",
-                instruction="Qubit 0에 Hadamard (H) 게이트를 배치하세요.",
-                expected=lambda infos: (
-                    len(infos) == 1 and
-                    infos[0].gate_type == "H" and infos[0].row == 0
-                ),
-                hint="왼쪽 팔레트에서 H를 드래그하여 q[0]에 놓으세요.",
+                title="Hadamard Gate",
+                instruction="q[0]에 Hadamard 게이트를 배치하세요.",
+                expected=lambda infos: len(infos) == 1 and infos[0].gate_type == 'H',
+                hint="H 게이트를 q[0]에 드래그하세요.",
             ),
             TutorialStep(
-                title="Step 2: Bell State",
-                instruction=(
-                    "Bell 상태를 만드세요:\n"
-                    "1) q[0]에 H\n"
-                    "2) q[0] → q[1] CNOT"
-                ),
+                title="Bell State",
+                instruction="H(q0) 후 CNOT(q0 → q1)을 구성하세요.",
                 expected=lambda infos: (
-                    any(g.gate_type == 'H' and g.row == 0 for g in infos) and
-                    any(g.gate_type == 'CTRL' and g.row == 0 for g in infos) and
-                    any(g.gate_type == 'X_T' and g.row == 1 for g in infos)
+                    any(g.gate_type == 'H' for g in infos) and
+                    any(g.gate_type == 'CTRL' for g in infos)
                 ),
-                hint="첫 열에 H, 다음 열에 ●(q0) + ⊕(q1)을 배치하세요.",
-            ),
-            TutorialStep(
-                title="Step 3: Superdense Coding – Alice",
-                instruction=(
-                    "Alice의 인코딩 단계입니다.\n"
-                    "q[0]에 X 또는 Z 게이트 중 하나를 추가하세요."
-                ),
-                expected=lambda infos: any(
-                    g.row == 0 and g.gate_type in ('X', 'Z') for g in infos
-                ),
-                hint="Alice는 자신의 큐비트(q0)에 X 또는 Z를 적용합니다.",
+                hint="첫 열에 H, 다음 열에 CNOT을 배치하세요.",
             ),
         ]
 
-    # --------------------------------------------------------
-    # Step Control Logic
-    # --------------------------------------------------------
-    def load_step(self, index: int):
-        self.current_step_index = index
-        step = self.steps[index]
+        return [
+            Tutorial(
+                name="Quantum Basics",
+                description="단일 큐비트와 얽힘의 기초",
+                steps=steps
+            )
+        ]
 
-        self.title_label.setText(step.title)
-        self.instruction_box.setText(step.instruction)
+    # --------------------------------------------------------
+    # Flow Control
+    # --------------------------------------------------------
+    def start_tutorial(self):
+        row = self.list_widget.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Select", "튜토리얼을 선택하세요.")
+            return
+
+        self.current_tutorial = self.tutorials[row]
+        self.current_step_index = 0
+        self.load_step(0)
+        self.stack.setCurrentIndex(1)
+
+    def load_step(self, index: int):
+        step = self.current_tutorial.steps[index]
+        self.step_title.setText(step.title)
+        self.step_instruction.setText(step.instruction)
 
         self.view.circuit.clear()
         self.view.scene.clear()
-        self.view._update_scene_rect()
         self.view.draw_all()
 
         if step.auto_setup:
@@ -1157,25 +1202,30 @@ class TutorialTab(QWidget):
 
     def check_step(self):
         infos = self.view.export_gate_infos()
-        step = self.steps[self.current_step_index]
-
+        step = self.current_tutorial.steps[self.current_step_index]
         if step.expected(infos):
-            QMessageBox.information(self, "Success", "정확합니다! 다음 단계로 이동하세요.")
+            QMessageBox.information(self, "Success", "정확합니다!")
         else:
-            QMessageBox.warning(self, "Not yet", "아직 요구 조건을 만족하지 않습니다.")
+            QMessageBox.warning(self, "Try again", "조건을 만족하지 않습니다.")
 
     def show_hint(self):
-        step = self.steps[self.current_step_index]
+        step = self.current_tutorial.steps[self.current_step_index]
         QMessageBox.information(self, "Hint", step.hint)
 
     def next_step(self):
-        if self.current_step_index + 1 >= len(self.steps):
-            QMessageBox.information(self, "Tutorial", "모든 튜토리얼을 완료했습니다 🎉")
+        if self.current_step_index + 1 >= len(self.current_tutorial.steps):
+            QMessageBox.information(self, "Done", "튜토리얼 완료 🎉")
+            self.stack.setCurrentIndex(0)
             return
-        self.load_step(self.current_step_index + 1)
+        self.current_step_index += 1
+        self.load_step(self.current_step_index)
 
     def reset_step(self):
         self.load_step(self.current_step_index)
+
+
+
+
 
 
 # ============================================================
