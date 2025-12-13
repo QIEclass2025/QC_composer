@@ -101,7 +101,7 @@ class BlochCanvas(QWidget):
 
     def update_bloch(self, density_matrix, qubit_index):
         if self.current_canvas is not None:
-            self.layout_box.removeWidget(self.current_canvas)
+            self.핟layout_box.removeWidget(self.current_canvas)
             self.current_canvas.setParent(None)
             self.current_canvas = None
 
@@ -1104,6 +1104,7 @@ class TutorialTab(QWidget):
         self.view = CircuitView()
         self.palette = PaletteView(self.view)
 
+        from PyQt6.QtWidgets import QSizePolicy
         self.view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.palette.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
 
@@ -1148,30 +1149,84 @@ class TutorialTab(QWidget):
     # Tutorial Construction
     # --------------------------------------------------------
     def build_tutorials(self) -> List[Tutorial]:
-        steps = [
+        # -----------------------------
+        # Hadamard Gate Tutorial
+        # -----------------------------
+        hadamard_steps = [
             TutorialStep(
                 title="Hadamard Gate",
                 instruction="q[0]에 Hadamard 게이트를 배치하세요.",
                 expected=lambda infos: len(infos) == 1 and infos[0].gate_type == 'H',
                 hint="H 게이트를 q[0]에 드래그하세요.",
-            ),
+            )
+        ]
+
+        # -----------------------------
+        # CNOT Tutorial
+        # -----------------------------
+        cnot_steps = [
             TutorialStep(
-                title="Bell State",
-                instruction="H(q0) 후 CNOT(q0 → q1)을 구성하세요.",
+                title="CNOT Gate",
+                instruction="q[0]을 컨트롤, q[1]을 타겟으로 하는 CNOT을 구성하세요.",
+                expected=lambda infos: any(g.gate_type == 'CTRL' for g in infos),
+                hint="CTRL과 X_TARGET을 같은 컬럼에 배치하세요.",
+            )
+        ]
+
+        # -----------------------------
+        # QFT Tutorial (Skeleton)
+        # -----------------------------
+        qft_steps = [
+            TutorialStep(
+                title="QFT Overview",
+                instruction="QFT 회로의 구조를 구성하세요 (H + Controlled-Phase).",
+                expected=lambda infos: any(g.gate_type == 'H' for g in infos),
+                hint="QFT는 Hadamard와 제어 위상 게이트로 이루어집니다.",
+            )
+        ]
+
+        # -----------------------------
+        # Superdense Coding Tutorial
+        # -----------------------------
+        superdense_steps = [
+            TutorialStep(
+                title="Bell Pair Preparation",
+                instruction="Alice와 Bob이 공유할 Bell 상태를 준비하세요.",
                 expected=lambda infos: (
                     any(g.gate_type == 'H' for g in infos) and
                     any(g.gate_type == 'CTRL' for g in infos)
                 ),
-                hint="첫 열에 H, 다음 열에 CNOT을 배치하세요.",
+                hint="H(q0) 다음 CNOT(q0→q1) 순서입니다.",
             ),
+            TutorialStep(
+                title="Alice Encoding",
+                instruction="Alice가 q[0]에 X 또는 Z를 적용하세요.",
+                expected=lambda infos: any(g.gate_type in ('X', 'Z') for g in infos),
+                hint="보낼 비트에 따라 X 또는 Z를 선택하세요.",
+            )
         ]
 
         return [
             Tutorial(
-                name="Quantum Basics",
-                description="단일 큐비트와 얽힘의 기초",
-                steps=steps
-            )
+                name="Hadamard Gate",
+                description="단일 큐비트 중첩 생성",
+                steps=hadamard_steps
+            ),
+            Tutorial(
+                name="CNOT Gate",
+                description="두 큐비트 얽힘의 기초",
+                steps=cnot_steps
+            ),
+            Tutorial(
+                name="Quantum Fourier Transform",
+                description="양자 알고리즘의 핵심 변환",
+                steps=qft_steps
+            ),
+            Tutorial(
+                name="Superdense Coding",
+                description="1 큐비트로 2 비트 전송",
+                steps=superdense_steps
+            ),
         ]
 
     # --------------------------------------------------------
@@ -1222,9 +1277,6 @@ class TutorialTab(QWidget):
 
     def reset_step(self):
         self.load_step(self.current_step_index)
-
-
-
 
 
 
