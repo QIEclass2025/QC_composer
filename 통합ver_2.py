@@ -69,8 +69,8 @@ class TutorialStep:
 @dataclass
 class Tutorial:
     name: str
-    description: str
-    steps: List[TutorialStep]
+    theory_key: str
+    steps: List["TutorialStep"]
 
 
 
@@ -1142,8 +1142,25 @@ class TutorialTab(QWidget):
         self.btn_hint.clicked.connect(self.show_hint)
         self.btn_next.clicked.connect(self.next_step)
         self.btn_reset.clicked.connect(self.reset_step)
+        self.list_widget.currentRowChanged.connect(self.on_tutorial_selected)
 
         self.stack.setCurrentIndex(0)
+
+        # When selecting tutorial, update description
+        self.list_widget.currentItemChanged.connect(self.update_intro_text)
+
+    def on_tutorial_selected(self, row: int):
+        if row < 0:
+            return
+
+        tutorial = self.tutorials[row]
+        self.current_tutorial = tutorial
+
+        key = tutorial.theory_key
+        self.intro_title.setText(tutorial.name)
+        self.intro_text.setMarkdown(self.TUTORIAL_DATA[key])
+
+        self.btn_start.setEnabled(True)
 
     # --------------------------------------------------------
     # Tutorial Construction
@@ -1209,26 +1226,25 @@ class TutorialTab(QWidget):
         return [
             Tutorial(
                 name="Hadamard Gate",
-                description="단일 큐비트 중첩 생성",
+                theory_key="1. Qubit과 Hadamard Gate",
                 steps=hadamard_steps
             ),
             Tutorial(
                 name="CNOT Gate",
-                description="두 큐비트 얽힘의 기초",
+                theory_key="2. CNOT과 Entanglement",
                 steps=cnot_steps
             ),
             Tutorial(
                 name="Quantum Fourier Transform",
-                description="양자 알고리즘의 핵심 변환",
+                theory_key="3. 양자 푸리에 변환 (QFT) 기초",
                 steps=qft_steps
             ),
             Tutorial(
                 name="Superdense Coding",
-                description="1 큐비트로 2 비트 전송",
+                theory_key="4. 초고밀도 코딩 (Superdense Coding)",
                 steps=superdense_steps
             ),
         ]
-
     # --------------------------------------------------------
     # Flow Control
     # --------------------------------------------------------
@@ -1275,10 +1291,16 @@ class TutorialTab(QWidget):
         self.current_step_index += 1
         self.load_step(self.current_step_index)
 
+    def update_intro_text(self, current, previous=None):
+        if not current:
+            return
+        title = current.text()
+        if title in self.TUTORIAL_DATA:
+            self.intro_title.setText(title)
+            self.intro_text.setMarkdown(self.TUTORIAL_DATA[title])
+
     def reset_step(self):
         self.load_step(self.current_step_index)
-
-
 
 # ============================================================
 # MAIN WINDOW (ComposerTab + TutorialTab)
