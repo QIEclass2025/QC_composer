@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Dict, Tuple, Optional, List, Callable
 
 from PyQt6.QtWidgets import (
-    QApplication, QWidget, QHBoxLayout, QVBoxLayout,
+    QApplication,QProgressBar, QWidget, QHBoxLayout, QVBoxLayout,
     QGraphicsView, QGraphicsScene, QGraphicsRectItem,
     QGraphicsTextItem, QLabel, QPushButton, QMessageBox,
     QTabWidget, QDialog, QTextEdit, QInputDialog, QGraphicsDropShadowEffect,
@@ -73,7 +73,6 @@ class Tutorial:
     steps: List["TutorialStep"]
 
 
-
 # ============================================
 # [신규 추가] Bloch Sphere Visualization Canvas
 # (얽힘 상태일 때 강제로 화살표를 보여주는 로직이 포함됨)
@@ -101,7 +100,7 @@ class BlochCanvas(QWidget):
 
     def update_bloch(self, density_matrix, qubit_index):
         if self.current_canvas is not None:
-            self.핟layout_box.removeWidget(self.current_canvas)
+            self.layout_box.removeWidget(self.current_canvas)
             self.current_canvas.setParent(None)
             self.current_canvas = None
 
@@ -193,7 +192,7 @@ class GateItem(QGraphicsRectItem):
     WIDTH = 46
     HEIGHT = 34
     RADIUS = 8
-
+    
     def __init__(self, label, gate_type, view=None, palette_mode=False):
         super().__init__(0, 0, self.WIDTH, self.HEIGHT)
 
@@ -395,7 +394,7 @@ class CircuitView(QGraphicsView):
     def draw_all(self):
         """UI 전체 다시 그리기 / 격자 재배치 / 선 재그리기"""
         
-        
+
         for it in list(self.scene.items()):
             if isinstance(it, (GateItem, QGraphicsTextItem, BlochButtonItem)):
                 continue
@@ -405,25 +404,17 @@ class CircuitView(QGraphicsView):
             if it.scene() != self.scene:
                 continue
             self.scene.removeItem(it)
-
-
-
+            
         # 1. Palette Gate 제거
         if self.palette_gate is not None:
             self.scene.removeItem(self.palette_gate)
             self.palette_gate = None
 
-        # 2. GateItem / Text / 버튼 등 제외하고 싹 지움
-        for it in list(self.scene.items()):
-            if isinstance(it, (GateItem, QGraphicsTextItem, BlochButtonItem)):
-                continue
-            if isinstance(getattr(it, "parentItem", lambda: None)(), GateItem):
-                continue
-            self.scene.removeItem(it)
 
         # 3. 기존 연결선 삭제
         for l in self.connection_lines:
-            self.scene.removeItem(l)
+            if l.scene() is self.scene:
+                self.scene.removeItem(l)
         self.connection_lines.clear()
 
         # 4. 와이어 및 텍스트 다시 그림
@@ -1049,11 +1040,13 @@ class TutorialTab(QWidget):
     def __init__(self):
         super().__init__()
 
+        root = QHBoxLayout(self)
+
         self.tutorials: List[Tutorial] = self.build_tutorials()
         self.current_tutorial: Tutorial | None = None
         self.current_step_index: int = 0
 
-        root = QHBoxLayout(self)
+        self.tutorials_started = False  # ★ 추가: 스타트 버튼 누름 여부
 
         # ======================================================
         # LEFT : Tutorial List (1/4)
@@ -1097,8 +1090,22 @@ class TutorialTab(QWidget):
         self.page_step = QWidget()
         step_layout = QVBoxLayout(self.page_step)
 
+        title_layout = QHBoxLayout()
+
         self.step_title = QLabel()
         self.step_title.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
+
+        self.progress = QProgressBar()
+        self.progress.setMinimum(0)
+        self.progress.setMaximum(100)
+        self.progress.setValue(0)
+        self.progress.setFixedHeight(20)  # 높이 조절 가능
+
+        # 소제목과 진행바를 같은 줄에 배치
+        title_layout.addWidget(self.step_title, stretch=1)
+        title_layout.addWidget(self.progress, stretch=1)  # 필요시 stretch 조정
+
+        step_layout.addLayout(title_layout)
 
         circuit_box = QHBoxLayout()
         self.view = CircuitView()
@@ -1173,20 +1180,50 @@ class TutorialTab(QWidget):
         self.stack.setCurrentIndex(0)
 
         # When selecting tutorial, update description
-        self.list_widget.currentItemChanged.connect(self.update_intro_text)
 
     def on_tutorial_selected(self, row: int):
         if row < 0:
             return
 
-        tutorial = self.tutorials[row]
-        self.current_tutorial = tutorial
+        selected_tutorial = self.tutorials[row]
 
-        key = tutorial.theory_key
-        self.intro_title.setText(tutorial.name)
-        self.intro_text.setMarkdown(self.TUTORIAL_DATA[key])
+        if self.tutorials_started:
+            # 진행 중인 튜토리얼이 있고 아직 완료되지 않은 경우
+            if self.current_tutorial and self.current_step_index < len(self.current_tutorial.steps):
+                ret = QMessageBox.warning(
+                    self,
+                    "진행 중인 튜토리얼 종료",
+                    "진행 중인 튜토리얼을 종료하고 새로운 튜토리얼을 시작하시겠습니까?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                if ret == QMessageBox.StandardButton.No:
+                    # 선택 복원
+                    self.list_widget.blockSignals(True)
+                    self.list_widget.setCurrentRow(self.tutorials.index(self.current_tutorial))
+                    self.list_widget.blockSignals(False)
+                    return
 
-        self.btn_start.setEnabled(True)
+        # 선택된 튜토리얼 설정
+        self.current_tutorial = selected_tutorial
+        self.current_step_index = 0
+
+        # 진행률 초기화
+        self.progress.setValue(0)
+        # NEXT 버튼 활성화
+        self.btn_next.setEnabled(True)
+
+        if not self.tutorials_started:
+            # ★ 튜토리얼 시작 전: Intro 페이지 표시
+            theory_key = self.current_tutorial.theory_key
+            self.intro_title.setText(self.current_tutorial.name)
+            self.intro_text.setText(self.TUTORIAL_DATA.get(theory_key, "이 튜토리얼에 대한 정보가 없습니다."))
+            self.stack.setCurrentIndex(0)
+        else:
+            # ★ 튜토리얼 시작 후: Step 페이지 바로 로드
+            self.start_tutorial()
+
+
+
 
     # --------------------------------------------------------
     # Tutorial Construction
@@ -1197,23 +1234,66 @@ class TutorialTab(QWidget):
         # -----------------------------
         hadamard_steps = [
             TutorialStep(
-                title="Hadamard Gate",
+                title="기본 상태 |0⟩",
+                instruction="아무 게이트도 배치하지 말고 측정해 보세요.",
+                expected=lambda infos: len(infos) == 0,
+                hint="이번 단계에서는 게이트를 두지 않습니다."
+            ),
+
+            TutorialStep(
+                title="Hadamard로 중첩 만들기",
                 instruction="q[0]에 Hadamard 게이트를 배치하세요.",
-                expected=lambda infos: len(infos) == 1 and infos[0].gate_type == 'H',
-                hint="H 게이트를 q[0]에 드래그하세요.",
+                expected=lambda infos: (
+                    len(infos) == 1 and infos[0].gate_type == 'H'
+                ),
+                hint="H 게이트를 q[0]에 하나만 배치하세요."
+            ),
+
+            TutorialStep(
+                title="Hadamard는 가역적이다",
+                instruction="q[0]에 Hadamard 게이트를 두 번 배치하세요.",
+                expected=lambda infos: (
+                    len(infos) == 2 and
+                    all(g.gate_type == 'H' for g in infos)
+                ),
+                hint="같은 큐비트에 H를 두 번 연속 배치하세요."
             )
+    
         ]
 
         # -----------------------------
         # CNOT Tutorial
         # -----------------------------
         cnot_steps = [
-            TutorialStep(
-                title="CNOT Gate",
-                instruction="q[0]을 컨트롤, q[1]을 타겟으로 하는 CNOT을 구성하세요.",
-                expected=lambda infos: any(g.gate_type == 'CTRL' for g in infos),
-                hint="CTRL과 X_TARGET을 같은 컬럼에 배치하세요.",
-            )
+                TutorialStep(
+                    title="고전적 상관관계",
+                    instruction="q[0]에 X 게이트를 적용한 뒤 CNOT을 구성하세요.",
+                    expected=lambda infos: (
+                        any(g.gate_type == 'X' for g in infos) and
+                        any(g.gate_type == 'CTRL' for g in infos)
+                    ),
+                    hint="X(q0) → CNOT(q0→q1) 순서입니다."
+                ),
+
+                TutorialStep(
+                    title="Bell State 만들기",
+                    instruction="Hadamard와 CNOT으로 Bell 상태를 만드세요.",
+                    expected=lambda infos: (
+                        any(g.gate_type == 'H' for g in infos) and
+                        any(g.gate_type == 'CTRL' for g in infos)
+                    ),
+                    hint="H(q0) 다음 CNOT(q0→q1) 입니다."
+                ),
+
+                TutorialStep(
+                    title="얽힘은 단순한 복사가 아니다",
+                    instruction="Bell 상태를 유지한 채 회로를 확인하세요.",
+                    expected=lambda infos: (
+                        any(g.gate_type == 'H' for g in infos) and
+                        any(g.gate_type == 'CTRL' for g in infos)
+                    ),
+                    hint="얽힘 상태에서는 두 큐비트를 독립적으로 설명할 수 없습니다."
+                )
         ]
 
         # -----------------------------
@@ -1221,10 +1301,24 @@ class TutorialTab(QWidget):
         # -----------------------------
         qft_steps = [
             TutorialStep(
-                title="QFT Overview",
-                instruction="QFT 회로의 구조를 구성하세요 (H + Controlled-Phase).",
+                title="QFT의 핵심 구성요소",
+                instruction="Hadamard 게이트를 사용해 QFT 구조를 시작하세요.",
                 expected=lambda infos: any(g.gate_type == 'H' for g in infos),
-                hint="QFT는 Hadamard와 제어 위상 게이트로 이루어집니다.",
+                hint="QFT는 Hadamard로 시작합니다."
+            ),
+
+            TutorialStep(
+                title="제어 위상 게이트",
+                instruction="제어 게이트를 추가해 위상 관계를 만드세요.",
+                expected=lambda infos: any(g.gate_type == 'CTRL' for g in infos),
+                hint="QFT에는 제어 연산이 반드시 포함됩니다."
+            ),
+
+            TutorialStep(
+                title="QFT는 가역적이다",
+                instruction="QFT 뒤에 역연산을 구성한다고 상상해 보세요.",
+                expected=lambda infos: len(infos) >= 2,
+                hint="모든 양자 게이트는 되돌릴 수 있습니다."
             )
         ]
 
@@ -1233,22 +1327,35 @@ class TutorialTab(QWidget):
         # -----------------------------
         superdense_steps = [
             TutorialStep(
-                title="Bell Pair Preparation",
+                title="Bell Pair 준비",
                 instruction="Alice와 Bob이 공유할 Bell 상태를 준비하세요.",
                 expected=lambda infos: (
                     any(g.gate_type == 'H' for g in infos) and
                     any(g.gate_type == 'CTRL' for g in infos)
                 ),
-                hint="H(q0) 다음 CNOT(q0→q1) 순서입니다.",
+                hint="H(q0) → CNOT(q0→q1)"
             ),
+
             TutorialStep(
-                title="Alice Encoding",
-                instruction="Alice가 q[0]에 X 또는 Z를 적용하세요.",
-                expected=lambda infos: any(g.gate_type in ('X', 'Z') for g in infos),
-                hint="보낼 비트에 따라 X 또는 Z를 선택하세요.",
+                title="Alice의 인코딩",
+                instruction="Alice가 자신의 큐비트에 X 또는 Z를 적용하세요.",
+                expected=lambda infos: any(
+                    g.gate_type in ('X', 'Z') for g in infos
+                ),
+                hint="보낼 비트에 따라 X 또는 Z를 선택하세요."
+            ),
+
+            TutorialStep(
+                title="Bob의 디코딩",
+                instruction="Bob의 디코딩 회로를 완성하세요.",
+                expected=lambda infos: (
+                    any(g.gate_type == 'CTRL' for g in infos) and
+                    any(g.gate_type == 'H' for g in infos)
+                ),
+                hint="CNOT 후 Hadamard가 필요합니다."
             )
         ]
-
+        
         return [
             Tutorial(
                 name="Hadamard Gate",
@@ -1275,28 +1382,36 @@ class TutorialTab(QWidget):
     # Flow Control
     # --------------------------------------------------------
     def start_tutorial(self):
-        row = self.list_widget.currentRow()
-        if row < 0:
+        if not self.current_tutorial:
             QMessageBox.warning(self, "Select", "튜토리얼을 선택하세요.")
             return
 
-        self.current_tutorial = self.tutorials[row]
+        # 튜토리얼 시작 플래그 설정
+        self.tutorials_started = True
+
+        # 첫 단계 로드
         self.current_step_index = 0
         self.load_step(0)
-        self.stack.setCurrentIndex(1)
+        self.stack.setCurrentIndex(1)  # Step 페이지 표시
+        
 
     def load_step(self, index: int):
         step = self.current_tutorial.steps[index]
+
         self.step_title.setText(step.title)
         self.step_instruction.setText(step.instruction)
 
+        # 안전한 리셋
+        for (r, c), g in list(self.view.circuit.items()):
+            self.view.scene.removeItem(g)
         self.view.circuit.clear()
-        self.view.scene.clear()
+
         self.view.draw_all()
 
         if step.auto_setup:
             step.auto_setup(self.view)
-
+        
+        
     def check_step(self):
         infos = self.view.export_gate_infos()
         step = self.current_tutorial.steps[self.current_step_index]
@@ -1310,23 +1425,40 @@ class TutorialTab(QWidget):
         QMessageBox.information(self, "Hint", step.hint)
 
     def next_step(self):
-        if self.current_step_index + 1 >= len(self.current_tutorial.steps):
-            QMessageBox.information(self, "Done", "튜토리얼 완료 🎉")
-            self.stack.setCurrentIndex(0)
+        if not self.current_tutorial:
             return
+
+        if self.current_step_index + 1 >= len(self.current_tutorial.steps):
+            self.progress.setValue(100)  # 진행률 100%
+            # ✔ 표시 추가
+            row = self.tutorials.index(self.current_tutorial)
+            item = self.list_widget.item(row)
+            item.setText(f"{self.current_tutorial.name} ✔")
+            
+            
+            QMessageBox.information(
+                self,
+                "Tutorial Complete",
+                "튜토리얼을 완료했습니다 🎉"
+            )
+            self.btn_next.setEnabled(False)
+            return
+
         self.current_step_index += 1
         self.load_step(self.current_step_index)
+        progress_percent = int((self.current_step_index / len(self.current_tutorial.steps)) * 100)
+        self.progress.setValue(progress_percent)
 
-    def update_intro_text(self, current, previous=None):
-        if not current:
-            return
-        title = current.text()
-        if title in self.TUTORIAL_DATA:
-            self.intro_title.setText(title)
-            self.intro_text.setMarkdown(self.TUTORIAL_DATA[title])
+            
 
     def reset_step(self):
         self.load_step(self.current_step_index)
+
+
+def load_step(self, index: int):
+    if index >= len(self.current_tutorial.steps):
+        QMessageBox.warning(self, "Error", "Invalid tutorial step index")
+        return
 
 # ============================================================
 # MAIN WINDOW (ComposerTab + TutorialTab)
@@ -1343,6 +1475,7 @@ class MainWindow(QWidget):
         tabs.addTab(ComposerTab(), "Circuit Composer")
 
         self.setWindowTitle("Quantum Circuit Composer — With Tutorial")
+        
 
 
 def main():
