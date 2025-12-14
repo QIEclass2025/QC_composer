@@ -217,6 +217,8 @@ class GateItem(QGraphicsRectItem):
         self.text = QGraphicsTextItem(self)
         self.text.setFont(font)
         self.text.setDefaultTextColor(Qt.GlobalColor.black)
+        # 수동으로 paint()에서 텍스트를 그리므로, 자식 텍스트는 숨김 처리하여 겹침 방지
+        self.text.setVisible(False)
         self.text.setPos(0, 0)  # ★ 위치 초기화
 
         self.hovering = False
@@ -342,7 +344,11 @@ class GateItem(QGraphicsRectItem):
         
         # ★ 텍스트 그리기
         if hasattr(self, 'text') and self.text is not None:
-            p.setFont(self.text.font())
+            font = self.text.font()
+            # CTRL, X_T, Z_T 게이트는 폰트 크기를 크게
+            if self.gate_type in ("CTRL", "X_T", "Z_T"):
+                font.setPointSize(16)  # 기본 10pt에서 16pt로 확대
+            p.setFont(font)
             p.setPen(QPen(Qt.GlobalColor.black))
             text_str = self.text.toPlainText()
             rect = self.rect()
@@ -1145,10 +1151,10 @@ class ComposerTab(QWidget):
                 elif g.gate_type=="X": qc.x(g.row)
                 elif g.gate_type=="Y": qc.y(g.row)
                 elif g.gate_type=="Z": qc.z(g.row)
-                # 회전 게이트: g.angle을 사용 (None인 경우 0으로 처리되어야 함)
-                elif g.gate_type=="RX": qc.rx(g.angle, g.row)
-                elif g.gate_type=="RY": qc.ry(g.angle, g.row)
-                elif g.gate_type=="RZ": qc.rz(g.angle, g.row)
+                # 회전 게이트: g.angle을 사용 (None인 경우 0으로 처리)
+                elif g.gate_type=="RX": qc.rx(g.angle if g.angle is not None else 0, g.row)
+                elif g.gate_type=="RY": qc.ry(g.angle if g.angle is not None else 0, g.row)
+                elif g.gate_type=="RZ": qc.rz(g.angle if g.angle is not None else 0, g.row)
             
             # B. 다중 큐비트 게이트 (Control, Target)
             ctrls = [g.row for g in ops if g.gate_type=="CTRL"]
@@ -1206,9 +1212,9 @@ class ComposerTab(QWidget):
                 elif g.gate_type=="X": code.append(f"qc.x({g.row})\n")
                 elif g.gate_type=="Y": code.append(f"qc.y({g.row})\n")
                 elif g.gate_type=="Z": code.append(f"qc.z({g.row})\n")
-                elif g.gate_type=="RX": code.append(f"qc.rx({g.angle}, {g.row})\n")
-                elif g.gate_type=="RY": code.append(f"qc.ry({g.angle}, {g.row})\n")
-                elif g.gate_type=="RZ": code.append(f"qc.rz({g.angle}, {g.row})\n")
+                elif g.gate_type=="RX": code.append(f"qc.rx({g.angle if g.angle is not None else 0}, {g.row})\n")
+                elif g.gate_type=="RY": code.append(f"qc.ry({g.angle if g.angle is not None else 0}, {g.row})\n")
+                elif g.gate_type=="RZ": code.append(f"qc.rz({g.angle if g.angle is not None else 0}, {g.row})\n")
                 elif g.gate_type=="MEASURE": code.append(f"qc.measure({g.row}, {g.row})\n")
             
             # 다중 큐비트
@@ -1266,13 +1272,37 @@ class ComposerTab(QWidget):
         try:
             # AerSimulator는 Qiskit Aer에서 import 되어야 함
             sim = AerSimulator()
-            res = sim.run(qc, shots=1024).result()
+            shots = 1024
+            res = sim.run(qc, shots=shots).result()
             counts = res.get_counts()
         except Exception as e:
             QMessageBox.warning(self,"Simulator Error",f"{e}")
             return
 
-        QMessageBox.information(self,"Measurement Result",str(counts))
+        # 측정 결과를 보기 좋게 포맷팅
+        result_lines = [
+            "═" * 60,
+            "📊 양자 측정 결과",
+            "═" * 60,
+            f"\n총 시행 횟수: {shots}번\n",
+            "주의: 결과는 리틀엔디언(Little Endian) 형식으로 표시됩니다.",
+            "      (오른쪽이 q[0], 왼쪽이 q[n-1]입니다)\n",
+            "측정 결과:",
+            "─" * 60
+        ]
+        
+        # 결과를 확률 순서로 정렬
+        sorted_counts = sorted(counts.items(), key=lambda x: x[1], reverse=True)
+        for bitstring, count in sorted_counts:
+            # bitstring에서 공백 제거
+            clean_bitstring = bitstring.replace(" ", "")
+            percentage = (count / shots) * 100
+            result_lines.append(f"|{clean_bitstring}⟩: {count:4d}회 ({percentage:6.2f}%)")
+        
+        result_lines.append("═" * 60)
+        result_text = "\n".join(result_lines)
+
+        QMessageBox.information(self, "Measurement Result", result_text)
 
 
 
@@ -1918,6 +1948,8 @@ class TutorialTab(QWidget):
             
 
     def reset_step(self):
+        """현재 스텝 리셋 - 회로 초기화"""
+        self.view.clear_circuit(remove_oracle=False)
         self.load_step(self.current_step_index)
 
 
