@@ -11,10 +11,10 @@ from typing import Dict, Tuple, Optional, List, Callable
 
 from PyQt6.QtWidgets import (
     QApplication,QProgressBar, QWidget, QHBoxLayout, QVBoxLayout,
-    QGraphicsView, QGraphicsScene, QGraphicsRectItem,
+    QGraphicsView, QGraphicsScene, QGraphicsRectItem, QGraphicsItem,
     QGraphicsTextItem, QLabel, QPushButton, QMessageBox,
     QTabWidget, QDialog, QTextEdit, QInputDialog, QGraphicsDropShadowEffect,
-    QSplitter, QScrollArea, QSizePolicy,QListWidget,QStackedWidget     # tutorial용 import
+    QSplitter, QScrollArea, QSizePolicy,QListWidget,QStackedWidget, QRadioButton, QGroupBox, QGridLayout, QCheckBox      # tutorial용 import
 )
 from PyQt6.QtGui import QColor, QPen, QPainter, QFont, QBrush, QLinearGradient, QCursor, QDrag
 from PyQt6.QtCore import Qt, QRectF, QPointF, QMimeData
@@ -217,10 +217,13 @@ class GateItem(QGraphicsRectItem):
         self.text = QGraphicsTextItem(self)
         self.text.setFont(font)
         self.text.setDefaultTextColor(Qt.GlobalColor.black)
+        self.text.setPos(0, 0)  # ★ 위치 초기화
 
         self.hovering = False
         self.update_text()
         self._center()
+        self.shadow = None
+        
 
     def format_pi_fraction(self, angle):
         if angle is None:
@@ -314,14 +317,17 @@ class GateItem(QGraphicsRectItem):
 
     def hoverEnterEvent(self, e):
         self.hovering = True
-        shadow = QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(18)
-        shadow.setColor(QColor(60,60,60,130))
-        self.setGraphicsEffect(shadow)
+        if self.shadow is None:
+            self.shadow = QGraphicsDropShadowEffect()
+            self.shadow.setOffset(0,0)
+            self.shadow.setBlurRadius(18)
+            self.shadow.setColor(QColor(60,60,60,130))
+        self.setGraphicsEffect(self.shadow)
 
     def hoverLeaveEvent(self, e):
         self.hovering = False
         self.setGraphicsEffect(None)
+        self.shadow = None
 
     def paint(self, p, opt, widget=None):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -333,6 +339,44 @@ class GateItem(QGraphicsRectItem):
         pen.setWidth(2)
         p.setPen(pen)
         p.drawRoundedRect(self.rect(), self.RADIUS, self.RADIUS)
+        
+        # ★ 텍스트 그리기
+        if hasattr(self, 'text') and self.text is not None:
+            p.setFont(self.text.font())
+            p.setPen(QPen(Qt.GlobalColor.black))
+            text_str = self.text.toPlainText()
+            rect = self.rect()
+            p.drawText(rect, int(Qt.AlignmentFlag.AlignCenter), text_str)
+
+class OracleGateItem(QGraphicsRectItem):
+    
+    WIDTH = 40
+    
+    def __init__(self, wire_spacing):
+        super().__init__()
+
+        self.gate_type = "ORACLE"
+        self.locked = True
+
+        
+        height = wire_spacing * 1 + 60   # 두 행(q0, q1) 관통
+
+        self.setRect(0, 0, self.WIDTH, height)
+
+        self.setBrush(QColor("#E6F0FF"))
+        self.setPen(QPen(Qt.GlobalColor.black, 2))
+
+        label = QGraphicsTextItem("Uf", self)
+        label.setPos(self.WIDTH/2 - 10, height/2 - 10)
+
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, False)
+
+        self.setZValue(10)
+    
+    
+    
+
 
 class CircuitView(QGraphicsView):
 
@@ -360,6 +404,34 @@ class CircuitView(QGraphicsView):
 
         # 최초 그리기
         self.draw_all()
+
+        self.reserved_columns: set = set()
+
+    def get_oracle_column(self):
+        return MAX_COLS // 2
+
+    def has_oracle_gate(self):
+        return any(
+            getattr(item, "gate_type", None) == "ORACLE"
+            for item in self.scene.items()
+        )
+
+
+    def insert_oracle_gate(self):
+        if self.has_oracle_gate():
+            return
+
+        col = self.get_oracle_column()
+
+        gate = OracleGateItem(wire_spacing=ROW_HEIGHT)
+
+        x = X_OFFSET + col * CELL_WIDTH - gate.WIDTH / 2
+        y = Y_OFFSET - gate.rect().height()/2 + ROW_HEIGHT/2
+
+        gate.setPos(x, y)
+        self.scene.addItem(gate)
+
+        self.reserved_columns.add(col)
 
     # ----------------------------------------------------------
     # PUBLIC: Bloch Callback 설정
@@ -392,50 +464,148 @@ class CircuitView(QGraphicsView):
     # 전체 다시 그리기
     # ----------------------------------------------------------
     def draw_all(self):
-        """UI 전체 다시 그리기 / 격자 재배치 / 선 재그리기"""
-        
-
-        for it in list(self.scene.items()):
-            if isinstance(it, (GateItem, QGraphicsTextItem, BlochButtonItem)):
-                continue
-            if isinstance(getattr(it, "parentItem", lambda: None)(), GateItem):
-                continue
-            # 🔥 FIX: 실제로 이 scene에 속해 있는 아이템만 제거
-            if it.scene() != self.scene:
-                continue
-            self.scene.removeItem(it)
+        """전체 화면 다시 그리기"""
+        if not self.isVisible():
+            return
             
-        # 1. Palette Gate 제거
+        self.setUpdatesEnabled(False)
+        
+        try:
+            items_list = list(self.scene.items())
+
+            # 1) 배경만 제거 (와이어, 라벨, 연결선, 쓰레기통) - 게이트와 게이트 자식은 건드리지 않음
+            for it in items_list:
+                if isinstance(it, (GateItem, OracleGateItem, QGraphicsTextItem)):
+                    continue
+                # 게이트의 자식도 건드리지 않음
+                parent = it.parentItem() if hasattr(it, 'parentItem') else None
+                if isinstance(parent, (GateItem, OracleGateItem)):
+                    continue
+                if it.scene() is self.scene:
+                    try:
+                        self.scene.removeItem(it)
+                    except:
+                        pass
+
+            # 2) 연결선 제거
+            for l in list(self.connection_lines):
+                try:
+                    if l.scene() is self.scene:
+                        self.scene.removeItem(l)
+                except:
+                    pass
+            self.connection_lines.clear()
+
+            # 3) 배경 재구성
+            self._draw_wires()
+            self._draw_trash()
+
+            # 4) 게이트 위치 수정 (이미 scene에 있는 게이트들)
+            for (r, c), g in list(self.circuit.items()):
+                # 범위 벗어난 게이트 제거
+                if r < 0 or r >= self.n_qubits or c < 0 or c >= MAX_COLS:
+                    try:
+                        if g.scene() is self.scene:
+                            self.scene.removeItem(g)
+                    except:
+                        pass
+                    try:
+                        del self.circuit[(r, c)]
+                    except:
+                        pass
+                else:
+                    # 유효한 범위 내 게이트 위치 업데이트
+                    try:
+                        if g.scene() is not self.scene:
+                            self.scene.addItem(g)
+                        x = X_OFFSET + c * CELL_WIDTH - g.WIDTH / 2
+                        y = Y_OFFSET + r * ROW_HEIGHT - g.HEIGHT / 2
+                        g.setPos(x, y)
+                        # ★ 텍스트 업데이트 및 표시
+                        if hasattr(g, 'text') and g.text is not None:
+                            g.update_text()
+                            g.text.show()
+                    except:
+                        pass
+
+            # 5) 연결선 재구성
+            self._draw_connections()
+            
+        finally:
+            self.setUpdatesEnabled(True)
+
+    def _compute_scene_height(self):
+        return Y_OFFSET + (self.n_qubits + 1) * ROW_HEIGHT + 200
+
+    def _update_scene_rect(self):
+        right = self.get_right_end()
+        height = self._compute_scene_height()
+        self.setSceneRect(0, 0, right + 200, height)
+
+        # 쓰레기통 위치
+        self.trash_rect = QRectF(right - 90, 10, 70, 60)
+
+        # View 최소 높이
+        self.setMinimumHeight(int(height) + 40)
+
+    # ----------------------------------------------------------
+    # 전체 다시 그리기
+    # ----------------------------------------------------------
+    def draw_all(self):
+        """전체 화면 다시 그리기"""
+        self.setUpdatesEnabled(False)
+        
+        items = list(self.scene.items())
+
+        # 1) 배경 제거 (와이어, 라벨, 연결선, 쓰레기통)
+        for it in items:
+            if isinstance(it, (GateItem, OracleGateItem)):
+                continue
+            if it.scene() is self.scene:
+                self.scene.removeItem(it)
+
+        # 2) circuit에 없는 GateItem 제거
+        for it in items:
+            if isinstance(it, GateItem):
+                key = (it.row, it.col)
+                if key not in self.circuit:
+                    it.setGraphicsEffect(None)
+                    it.shadow = None
+                    if it.scene() is self.scene:
+                        self.scene.removeItem(it)
+
+        # 3) palette_gate 제거
         if self.palette_gate is not None:
-            self.scene.removeItem(self.palette_gate)
+            if self.palette_gate.scene() is self.scene:
+                self.scene.removeItem(self.palette_gate)
             self.palette_gate = None
 
-
-        # 3. 기존 연결선 삭제
-        for l in self.connection_lines:
+        # 4) 연결선 제거
+        for l in list(self.connection_lines):
             if l.scene() is self.scene:
                 self.scene.removeItem(l)
         self.connection_lines.clear()
 
-        # 4. 와이어 및 텍스트 다시 그림
+        # 5) 배경 재구성
         self._draw_wires()
-
-        # 5. 쓰레기통 다시 그림
         self._draw_trash()
 
-        # 6. 기존 GateItem 재배치
+        # 6) 게이트 위치 업데이트 및 재추가
         for (r, c), g in list(self.circuit.items()):
             if r >= self.n_qubits:
-                # 해당 큐비트 삭제됨 → 제거
-                self.scene.removeItem(g)
                 del self.circuit[(r, c)]
             else:
+                if g not in self.scene.items():
+                    self.scene.addItem(g)
                 x = X_OFFSET + c * CELL_WIDTH - g.WIDTH / 2
                 y = Y_OFFSET + r * ROW_HEIGHT - g.HEIGHT / 2
                 g.setPos(x, y)
 
-        # 7. Control ↔ Target 연결선
+        # 7) 연결선 재구성
         self._draw_connections()
+        
+        self.setUpdatesEnabled(True)
+
 
     # ----------------------------------------------------------
     # 와이어 + 라벨 + Bloch 버튼
@@ -541,6 +711,7 @@ class CircuitView(QGraphicsView):
             self.scene.removeItem(self.palette_gate)
 
         g = GateItem(label, gate_type, self)
+        g.update_text()  # ★ 텍스트 초기화
         center = self.mapToScene(self.viewport().rect().center())
         g.setPos(center.x() - g.WIDTH / 2, Y_OFFSET - 40 - g.HEIGHT / 2)
 
@@ -552,14 +723,24 @@ class CircuitView(QGraphicsView):
     # SNAP LOGIC (핵심)
     # ----------------------------------------------------------
     def snap_gate(self, g: GateItem):
+        
+        if getattr(g, "gate_type", None) == "ORACLE":
+            return
+
         """
         격자 스냅 / 삭제 / 스왑 / 다중 타겟 검사 포함
         """
         cx = g.pos().x() + g.WIDTH / 2
         cy = g.pos().y() + g.HEIGHT / 2
 
-        # (1) 쓰레기통 → 삭제
-        if self.trash_rect.contains(cx, cy):
+        # (1) 쓰레기통 → 삭제 [수정됨]
+        trash_x = self.trash_rect.x()
+        trash_y = self.trash_rect.y()
+        trash_w = self.trash_rect.width()
+        trash_h = self.trash_rect.height()
+        
+        if (trash_x <= cx <= trash_x + trash_w and 
+            trash_y <= cy <= trash_y + trash_h):
             if g.row is not None:
                 self.circuit.pop((g.row, g.col), None)
             self.scene.removeItem(g)
@@ -583,11 +764,33 @@ class CircuitView(QGraphicsView):
         col = round((cx - X_OFFSET) / CELL_WIDTH)
         row = round((cy - Y_OFFSET) / ROW_HEIGHT)
 
+        # ★ 먼저 이전 위치 저장
+        old = (g.row, g.col) if g.row is not None else None
+
+        # ★ classical bit 영역 확인 (n_qubits 이상이면 팔레트로 복구)
+        if row < 0 or row >= self.n_qubits or col < 0 or col >= MAX_COLS:
+            # 유효하지 않은 영역 - 이전 위치로 돌아가기
+            if old is not None:
+                # 이전에 circuit에 있었으면 그 위치로 복구
+                self.circuit[old] = g
+                g.row, g.col = old
+                g.setPos(
+                    X_OFFSET + old[1] * CELL_WIDTH - g.WIDTH / 2,
+                    Y_OFFSET + old[0] * ROW_HEIGHT - g.HEIGHT / 2
+                )
+            else:
+                # 새로운 게이트면 scene에서 제거
+                if g.scene() is self.scene:
+                    self.scene.removeItem(g)
+                if g is self.palette_gate:
+                    self.palette_gate = None
+            return
+
+        # 안전한 범위로 제한
         col = max(0, min(col, MAX_COLS - 1))
         row = max(0, min(row, self.n_qubits - 1))
 
         new = (row, col)
-        old = (g.row, g.col) if g.row is not None else None
 
         # (4) 다중 타겟 방지
         other_targets = [
@@ -626,6 +829,31 @@ class CircuitView(QGraphicsView):
                     Y_OFFSET + old[0] * ROW_HEIGHT - existing.HEIGHT / 2
                 )
 
+        if not self._is_valid_column(col):
+            if old is not None:
+                self.circuit[old] = g
+                g.row, g.col = old
+                g.setPos(
+                    X_OFFSET + old[1]* CELL_WIDTH - g.WIDTH / 2,
+                    Y_OFFSET + old[0] * ROW_HEIGHT - g.HEIGHT / 2
+                )
+            else:
+                self.scene.removeItem(g)
+            if existing is not None:
+                self.circuit[new] = existing
+            return
+        
+        if col in self.reserved_columns:
+            if hasattr(g, "row") and g.row is not None:
+                g.setPos(
+                    X_OFFSET + g.col * CELL_WIDTH - g.WIDTH / 2,
+                    Y_OFFSET + g.row * ROW_HEIGHT - g.HEIGHT / 2
+                )
+            else:
+                self.scene.removeItem(g)
+            return
+        
+
         # (7) 새 위치 등록
         self.circuit[new] = g
         g.row, g.col = row, col
@@ -643,6 +871,59 @@ class CircuitView(QGraphicsView):
 
         # (8) 전체 다시 그리기
         self.draw_all()
+
+    def remove_oracle_gate(self):
+        """Oracle 게이트 제거"""
+        try:
+            oracle_items = [
+                item for item in self.scene.items()
+                if getattr(item, "gate_type", None) == "ORACLE"
+            ]
+            for item in oracle_items:
+                try:
+                    if item.scene() is self.scene:
+                        self.scene.removeItem(item)
+                except:
+                    pass
+            self.reserved_columns.clear()
+        except:
+            pass
+
+    def clear_circuit(self, *, remove_oracle: bool = True):
+        """회로의 모든 게이트 제거 - 최소한의 작업"""
+        try:
+            # 1) 모든 업데이트 비활성화
+            self.setUpdatesEnabled(False)
+            self.scene.blockSignals(True)
+            
+            # 2) circuit 딕셔너리 초기화
+            self.circuit.clear()
+            
+            # 3) palette_gate 초기화
+            self.palette_gate = None
+            
+            # 4) 연결선 초기화
+            self.connection_lines.clear()
+            
+            # 5) Scene의 모든 아이템 제거
+            self.scene.clear()
+            
+        except Exception as e:
+            print(f"clear_circuit error: {e}")
+        finally:
+            try:
+                self.scene.blockSignals(False)
+                self.setUpdatesEnabled(True)
+            except:
+                pass
+        
+        # 6) 배경 재구성
+        try:
+            self._draw_wires()
+            self._draw_trash()
+        except Exception as e:
+            print(f"draw background error: {e}")
+
 
     # ----------------------------------------------------------
     # Delete 키 처리
@@ -674,6 +955,13 @@ class CircuitView(QGraphicsView):
             out.append(GateInfo(g.gate_type, r, c, ang))
         return sorted(out, key=lambda x: (x.col, x.row))
 
+    # 한 열에 타겟 게이트 여러개인지 체크
+    def _is_valid_column(self, col):
+        targets = [
+            g for (r, c), g in self.circuit.items()
+            if c == col and g.gate_type in ("X_T", "Z_T")
+        ]
+        return len(targets) <= 1
 
 # ============================================================
 # PALETTE VIEW
@@ -747,28 +1035,29 @@ class ComposerTab(QWidget):
         btn_del = QPushButton("Delete Qubit")
         self.btn_export = QPushButton("Export Qiskit Code")
         self.btn_measure = QPushButton("Run Measurement")
+        btn_clear = QPushButton("Clear Circuit")
+        
 
         side_panel.addWidget(btn_add)
         side_panel.addWidget(btn_del)
         side_panel.addWidget(self.btn_export)
         side_panel.addWidget(self.btn_measure)
+        side_panel.addWidget(btn_clear)
         side_panel.addStretch()
         
         # 상단 영역을 루트 레이아웃에 추가
         layout_root.addWidget(top_widget, stretch=3) # 회로 영역에 더 많은 공간 할당
 
-        # 2. 하단 블로흐 캔버스 추가
-        layout_root.addSpacing(15)
-        # BlochCanvas는 외부에서 정의되어야 함
-        self.bloch_canvas = BlochCanvas(self) 
-        layout_root.addWidget(self.bloch_canvas, stretch=2) # Bloch 구 영역 할당
+        #Bloch 전용 창
+        self.bloch_window = BlochWindow(self)
 
-        # [추가] 뷰에 Bloch 구 콜백 연결
+        #CircuitView에 Bloch 콜백 설정
         self.view.set_bloch_callback(self.update_single_bloch)
 
         # 시그널 연결
         btn_add.clicked.connect(self.add_q)
         btn_del.clicked.connect(self.del_q)
+        btn_clear.clicked.connect(lambda: self.view.clear_circuit(remove_oracle=True))
         self.btn_export.clicked.connect(self.export_qiskit)
         self.btn_measure.clicked.connect(self.run_measurement)
 
@@ -825,11 +1114,10 @@ class ComposerTab(QWidget):
             rho = partial_trace(full_state, trace_out_qubits)
             
             # 4. 캔버스 업데이트
-            self.bloch_canvas.update_bloch(rho, target_qubit_idx)
+            self.bloch_window.update_bloch(rho, target_qubit_idx)
 
         except Exception as e:
-            QMessageBox.warning(self, "Bloch Error", f"Calculation Failed: {e}")
-            self.bloch_canvas.hide()
+            QMessageBox.warning(self, "Bloch Error", f"Calculation Failed: \n{e}")
 
     # -----------------------------------------------------
     # Qiskit Circuit Builder
@@ -987,9 +1275,17 @@ class ComposerTab(QWidget):
         QMessageBox.information(self,"Measurement Result",str(counts))
 
 
+
 # ============================================================
 # TUTORIAL TAB  (Imported from tutorial_first.py)
 # ============================================================
+
+#Deutsch -Josza 용 함수
+def is_balanced_truth_table(truth_table: dict[str, int]) -> bool:
+    values = list(truth_table.values())
+    return values.count(0) == 2 and values.count(1) == 2
+
+
 class TutorialTab(QWidget):
 
     TUTORIAL_DATA = {
@@ -1033,7 +1329,17 @@ class TutorialTab(QWidget):
             "- 먼저 Qubit 0과 Qubit 1에 Bell State를 만드세요 (H + CNOT)\n"
             "- Alice의 큐비트(Qubit 0)에 X 또는 Z 게이트를 적용해 보세요\n"
             "- Bob 디코딩 회로를 구성한 뒤 측정을 실행하고 결과를 확인하세요\n\n"
-            "👉 하나의 큐비트 전송으로 2비트 정보가 전달되는 것을 직접 확인해 보세요!"
+            "👉 하나의 큐비트 전송으로 2비트 정보가 전달되는 것을 직접 확인해 보세요!",
+
+        "5. Deutsch Jozsa Algorithm":
+        "## Deutsch Jozsa Algorithm\n\n"
+        "숨겨진 함수 f(x)가 **constant** 인지 **balanced** 인지를\n"
+        "단 한 번의 oracle 호출로 판별하는 양자 알고리즘입니다.\n\n"
+        "이 튜토리얼에서는:\n"
+        "• Hadamard를 이용한 양자 병렬성\n"
+        "• Oracle을 블랙박스로 사용하는 이유\n"
+        "• 측정 결과가 의미하는 바\n\n"
+        "를 직접 회로를 구성하며 체험합니다."    
 
     }
 
@@ -1131,16 +1437,26 @@ class TutorialTab(QWidget):
         # -----------------------------
         # Buttons
         # -----------------------------
+
+        #오라클 생성 버튼
+        self.btn_define_oracle = QPushButton("Define Oracle")
+        self.btn_define_oracle.clicked.connect(self.open_oracle_dialog)
+        self.btn_define_oracle.hide()
+
+
         self.btn_check = QPushButton("Check")
         self.btn_hint = QPushButton("Hint")
         self.btn_reset = QPushButton("Reset")
         self.btn_next = QPushButton("Next")
+        
 
         # --- Check / Hint / Reset (윗줄)
         upper_btns = QHBoxLayout()
         upper_btns.addWidget(self.btn_check)
         upper_btns.addWidget(self.btn_hint)
         upper_btns.addWidget(self.btn_reset)
+        upper_btns.addWidget(self.btn_define_oracle)
+
 
         # --- Next (아랫줄, 오른쪽 정렬)
         lower_btns = QHBoxLayout()
@@ -1157,9 +1473,7 @@ class TutorialTab(QWidget):
         footer.addStretch()      # 왼쪽 비우기
         footer.addLayout(right_btns)
 
-
-    
-
+        # --- 전체 페이지 레이아웃
         step_layout.addWidget(self.step_title)
         step_layout.addLayout(circuit_box)
         step_layout.addWidget(self.step_instruction)
@@ -1178,6 +1492,13 @@ class TutorialTab(QWidget):
         self.list_widget.currentRowChanged.connect(self.on_tutorial_selected)
 
         self.stack.setCurrentIndex(0)
+
+        #Deutsch-Josza 용 오라클 함수 저장 변수
+        self.oracle_truth_table: dict[str, int] | None = None
+        self.oracle_type : str | None = None  # "constant" or "balanced"
+
+
+        
 
         # When selecting tutorial, update description
 
@@ -1209,7 +1530,7 @@ class TutorialTab(QWidget):
 
         # 진행률 초기화
         self.progress.setValue(0)
-        # NEXT 버튼 활성화
+            # NEXT 버튼 활성화
         self.btn_next.setEnabled(True)
 
         if not self.tutorials_started:
@@ -1221,6 +1542,91 @@ class TutorialTab(QWidget):
         else:
             # ★ 튜토리얼 시작 후: Step 페이지 바로 로드
             self.start_tutorial()
+
+    def open_oracle_dialog(self):
+        dialog = QDialog(self.window())
+        dialog.setWindowTitle("Define Oracle f(x)")
+        layout = QVBoxLayout(dialog)
+
+        # --- oracle type 선택 ---
+        rb_constant = QRadioButton("Constant")
+        rb_balanced = QRadioButton("Balanced")
+        rb_constant.setChecked(True)
+
+        layout.addWidget(rb_constant)
+        layout.addWidget(rb_balanced)
+
+        # --- constant 옵션 ---
+        const_group = QGroupBox("Constant Output")
+        const_layout = QVBoxLayout(const_group)
+        rb_zero = QRadioButton("Always 0")
+        rb_one = QRadioButton("Always 1")
+        rb_zero.setChecked(True)
+        const_layout.addWidget(rb_zero)
+        const_layout.addWidget(rb_one)
+
+        # --- balanced 옵션 ---
+        bal_group = QGroupBox("Balanced Output (choose two 1s)")
+        bal_layout = QGridLayout(bal_group)
+        checkboxes = {}
+        for i, key in enumerate(["00","01","10","11"]):
+            cb = QCheckBox(f"{key} → 1")
+            checkboxes[key] = cb
+            bal_layout.addWidget(cb, i//2, i%2)
+
+        layout.addWidget(const_group)
+        layout.addWidget(bal_group)
+
+        # --- OK 버튼 ---
+        btn_ok = QPushButton("OK")
+        layout.addWidget(btn_ok)
+
+        def on_ok():
+            if rb_constant.isChecked():
+                self.oracle_type = "constant"
+                value = 1 if rb_one.isChecked() else 0
+                self.oracle_truth_table = {
+                    k: value for k in ["00","01","10","11"]
+                }
+                self.view.insert_oracle_gate()
+                dialog.accept()
+                return
+
+            # balanced
+            truth = {
+                k: 1 if cb.isChecked() else 0
+                for k, cb in checkboxes.items()
+            }
+            if not is_balanced_truth_table(truth):
+                QMessageBox.warning(
+                    self,
+                    "Invalid Balanced Function",
+                    "balanced 조건을 만족하지 않습니다.\n"
+                    "출력 중 2개는 0, 나머지 2개는 1 이어야 합니다."
+                )
+                return
+
+            self.oracle_type = "balanced"
+            self.oracle_truth_table = truth
+            self.view.insert_oracle_gate()
+            dialog.accept()
+
+
+        def update_ui():
+            const_group.setEnabled(rb_constant.isChecked())
+            bal_group.setEnabled(rb_balanced.isChecked())
+
+        rb_constant.toggled.connect(update_ui)
+        rb_balanced.toggled.connect(update_ui)
+        update_ui()
+
+
+        btn_ok.clicked.connect(on_ok)
+        result = dialog.exec()
+
+        if result != QDialog.accepted:
+            self.oracle_truth_table = None
+            self.oracle_type = None
 
 
 
@@ -1354,8 +1760,57 @@ class TutorialTab(QWidget):
                 ),
                 hint="CNOT 후 Hadamard가 필요합니다."
             )
-        ]
+
         
+        ]
+
+        deutsch_jozsa_steps = [
+            TutorialStep(
+                title="초기 상태 |0⟩|1⟩ 만들기",
+                instruction=(
+                    "Deutsch–Jozsa 알고리즘은 |0⟩|1⟩ 상태에서 시작합니다.\n"
+                    "두 번째 큐비트 q[1]에 X 게이트를 배치하세요."
+                ),
+                expected=lambda infos: (
+                    len(infos) == 1 and
+                    infos[0].gate_type == "X" and
+                    infos[0].row == 1
+                ),
+                hint="q[1]에 X 게이트 하나만 놓으면 됩니다."
+            ),
+
+            TutorialStep(
+                title="입력 큐비트 중첩 만들기",
+                instruction=(
+                    "이제 입력 큐비트에 Hadamard 게이트를 적용합니다.\n"
+                    "q[0]에 Hadamard 게이트를 배치하세요."
+                ),
+                expected=lambda infos: (
+                    len(infos) == 2 and
+                    any(g.gate_type == "X" and g.row == 1 for g in infos) and
+                    any(g.gate_type == "H" and g.row == 0 for g in infos)
+                ),
+                hint="출력 큐비트(q[1])에는 아무것도 하지 않습니다."
+            ),
+
+            TutorialStep(
+                title="Oracle 정의하기",
+                instruction=(
+                    "숨겨진 함수 f(x)를 정의합니다.\n\n"
+                    "• constant / balanced 중 선택\n"
+                    "• constant: 출력이 항상 0 또는 1\n"
+                    "• balanced: 00,01,10,11 중 두 개만 1"
+                ),
+                expected=lambda infos: self.oracle_truth_table is not None,
+                hint="oracle은 회로로 직접 만들지 않습니다.",
+                #auto_setup=lambda view: self.open_oracle_dialog()
+            ),
+
+
+
+
+        ]
+
         return [
             Tutorial(
                 name="Hadamard Gate",
@@ -1377,6 +1832,11 @@ class TutorialTab(QWidget):
                 theory_key="4. 초고밀도 코딩 (Superdense Coding)",
                 steps=superdense_steps
             ),
+            Tutorial(
+                name = "Deutsch Jozsa Algorithm",
+                theory_key = "5. Deutsch Jozsa Algorithm",
+                steps=deutsch_jozsa_steps
+            )
         ]
     # --------------------------------------------------------
     # Flow Control
@@ -1393,7 +1853,9 @@ class TutorialTab(QWidget):
         self.current_step_index = 0
         self.load_step(0)
         self.stack.setCurrentIndex(1)  # Step 페이지 표시
-        
+        self.oracle_truth_table = None
+        self.oracle_type = None
+
 
     def load_step(self, index: int):
         step = self.current_tutorial.steps[index]
@@ -1401,15 +1863,19 @@ class TutorialTab(QWidget):
         self.step_title.setText(step.title)
         self.step_instruction.setText(step.instruction)
 
-        # 안전한 리셋
-        for (r, c), g in list(self.view.circuit.items()):
+        # 안전한 리셋 (잠시 기능 비활성화)
+        """for (r, c), g in list(self.view.circuit.items()):
             self.view.scene.removeItem(g)
         self.view.circuit.clear()
 
-        self.view.draw_all()
+        self.view.draw_all()"""
 
         if step.auto_setup:
             step.auto_setup(self.view)
+        
+        if self.current_tutorial.name == "Deutsch Jozsa Algorithm" and self.current_step_index == 2:
+            
+            self.btn_define_oracle.show()
         
         
     def check_step(self):
@@ -1476,7 +1942,21 @@ class MainWindow(QWidget):
 
         self.setWindowTitle("Quantum Circuit Composer — With Tutorial")
         
+class BlochWindow(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Bloch Sphere Visualization")
+        self.resize(520,620)
 
+        layout = QVBoxLayout(self)
+        self.canvas = BlochCanvas(self)
+        layout.addWidget(self.canvas)
+
+    def update_bloch(self, rho, qubit_index):
+        self.canvas.update_bloch(rho, qubit_index)
+        self.show()
+        self.raise_()
+        self.activateWindow()
 
 def main():
     app = QApplication(sys.argv)
