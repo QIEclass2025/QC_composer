@@ -373,7 +373,7 @@ class OracleGateItem(QGraphicsRectItem):
         self.locked = True
 
         
-        height = wire_spacing * 1 + 60   # 두 행(q0, q1) 관통
+        height = wire_spacing * 2 + 60   # 세 행(q0~q2) 관통
 
         self.setRect(0, 0, self.WIDTH, height)
 
@@ -440,7 +440,8 @@ class CircuitView(QGraphicsView):
         gate = OracleGateItem(wire_spacing=ROW_HEIGHT)
 
         x = X_OFFSET + col * CELL_WIDTH - gate.WIDTH / 2
-        y = Y_OFFSET - gate.rect().height()/2 + ROW_HEIGHT/2
+        # 중앙을 q[1]에 두어 q0~q2를 모두 덮도록 배치
+        y = (Y_OFFSET + ROW_HEIGHT) - gate.rect().height()/2
 
         gate.setPos(x, y)
         self.scene.addItem(gate)
@@ -806,12 +807,33 @@ class CircuitView(QGraphicsView):
 
         new = (row, col)
 
-        # (4) 다중 타겟 방지
+        # (4) 다중 타겟/측정 게이트 방지
         other_targets = [
             gg for (rr, cc), gg in self.circuit.items()
             if cc == col and gg.gate_type in ("X_T", "Z_T") and gg is not g
         ]
+        # 같은 행(row)에 M 게이트가 이미 있으면 배치 거절
+        other_measures = [
+            gg for (rr, cc), gg in self.circuit.items()
+            if rr == row and gg.gate_type == "MEASURE" and gg is not g
+        ]
+        
         if g.gate_type in ("X_T", "Z_T") and other_targets:
+            if old is None:
+                self.scene.removeItem(g)
+                if g is self.palette_gate:
+                    self.palette_gate = None
+                self.draw_all()
+                return
+            else:
+                g.setPos(
+                    X_OFFSET + old[1] * CELL_WIDTH - g.WIDTH / 2,
+                    Y_OFFSET + old[0] * ROW_HEIGHT - g.HEIGHT / 2
+                )
+                return
+
+        # 같은 행에 M 게이트가 이미 있으면 배치 거절
+        if g.gate_type == "MEASURE" and other_measures:
             if old is None:
                 self.scene.removeItem(g)
                 if g is self.palette_gate:
@@ -1012,6 +1034,24 @@ class PaletteView(QGraphicsView):
             self.scene.addItem(item)
 
             col += 1
+            TutorialStep(
+                title="오라클 뒤 입력 큐비트에 Hadamard 적용",
+                instruction=(
+                    "Oracle을 적용한 뒤 입력 큐비트 q[0]에 Hadamard 게이트를 배치하세요."
+                ),
+                expected=lambda infos: any(g.gate_type == "H" and g.row == 0 for g in infos),
+                hint="입력 큐비트(q[0])에 H를 한 번 더 적용합니다."
+            ),
+            TutorialStep(
+                title="입력 큐비트 측정 및 판별",
+                instruction=(
+                    "입력 큐비트 q[0]을 측정하고 결과를 oracle 유형과 비교하세요.\n"
+                    "• constant → 측정 결과 q[0] = 0\n"
+                    "• balanced → 측정 결과 q[0] = 1"
+                ),
+                expected=lambda infos: True,  # 체크 버튼에서 시뮬레이션으로 판별
+                hint="Run Measurement로 측정 후 Check를 누르세요."
+            ),
             if col>=2:
                 col = 0
                 row+=1
@@ -1267,15 +1307,29 @@ class ComposerTab(QWidget):
         회로를 빌드하고 AerSimulator를 사용하여 측정을 실행합니다.
         """
         try:
-            qc = self.build_qiskit_circuit()
+            infos = self.view.export_gate_infos()
         except Exception as e:
             QMessageBox.warning(self,"Circuit Build Error",f"{e}")
             return
 
-        # 측정 게이트가 없으면 모든 큐비트를 측정
-        has_measure = any(inst.operation.name=="measure" for inst in qc.data)
-        if not has_measure:
-            qc.measure_all()
+        # 실제로 측정할 큐비트 찾기
+        measured_qubits = set()
+        for g in infos:
+            if g.gate_type == "MEASURE":
+                measured_qubits.add(g.row)
+        
+        # 측정 게이트가 없으면 경고
+        if not measured_qubits:
+            QMessageBox.warning(self, "No Measurement Gate", "측정(M)게이트가 없습니다!")
+            return
+        
+        n_measured = len(measured_qubits)
+        
+        try:
+            qc = self.build_qiskit_circuit()
+        except Exception as e:
+            QMessageBox.warning(self,"Circuit Build Error",f"{e}")
+            return
 
         try:
             # AerSimulator는 Qiskit Aer에서 import 되어야 함
@@ -1286,6 +1340,16 @@ class ComposerTab(QWidget):
         except Exception as e:
             QMessageBox.warning(self,"Simulator Error",f"{e}")
             return
+
+        # 측정된 비트 개수가 전체보다 적으면 결과 필터링
+        if n_measured < self.view.n_qubits:
+            filtered_counts = {}
+            for bitstring, count in counts.items():
+                clean = bitstring.replace(" ", "")
+                # 오른쪽 n_measured 비트만 추출
+                truncated = clean[-n_measured:] if n_measured > 0 else ""
+                filtered_counts[truncated] = filtered_counts.get(truncated, 0) + count
+            counts = filtered_counts
 
         # 측정 결과를 보기 좋게 포맷팅
         result_lines = [
@@ -1433,11 +1497,16 @@ class TutorialTab(QWidget):
         # ---- Page 1 : Interactive Step ----
         self.page_step = QWidget()
         step_layout = QVBoxLayout(self.page_step)
+        # 레이아웃 여백 설정으로 중앙 정렬 및 짤림 방지
+        step_layout.setContentsMargins(10, 10, 10, 10)
+        step_layout.setSpacing(8)
 
         title_layout = QHBoxLayout()
 
         self.step_title = QLabel()
         self.step_title.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
+        # 제목 위치 개선: 좌측 정렬 + 세로 중앙, 좌우 여백 추가
+        self.step_title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
         self.progress = QProgressBar()
         self.progress.setMinimum(0)
@@ -1446,31 +1515,40 @@ class TutorialTab(QWidget):
         self.progress.setFixedHeight(20)  # 높이 조절 가능
 
         # 소제목과 진행바를 같은 줄에 배치
-        title_layout.addWidget(self.step_title, stretch=1)
+        # 좌우 여백으로 모서리 붙는 느낌 완화
+        title_layout.setContentsMargins(12, 0, 12, 0)
+        title_layout.addWidget(self.step_title, stretch=2)
         title_layout.addWidget(self.progress, stretch=1)  # 필요시 stretch 조정
 
         step_layout.addLayout(title_layout)
+        # 제목과 회로 사이 여백 추가
+        step_layout.addSpacing(10)
 
         circuit_box = QHBoxLayout()
         self.view = CircuitView()
         self.palette = PaletteView(self.view)
-        CIRCUIT_HEIGHT = 550   # 원하는 높이 (조절 가능)
+        # 스크롤 없이도 모두 보이도록 고정 높이로 조정 (튜토리얼 전용)
+        CIRCUIT_HEIGHT = 500
 
         self.view.setFixedHeight(CIRCUIT_HEIGHT)
         self.palette.setFixedHeight(CIRCUIT_HEIGHT)
-
-
+        # 튜토리얼에서는 scene 크기도 고정하여 큐비트 수와 무관하게 일관된 높이 유지
+        self.view.setSceneRect(0, 0, self.view.get_right_end() + 200, CIRCUIT_HEIGHT)
 
         from PyQt6.QtWidgets import QSizePolicy
-        self.view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.palette.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+        # 수직 확장을 막아 과도한 높이 점유 방지
+        self.view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.palette.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
+        # 위쪽 정렬로 고정, stretch 제거로 가운데 정렬 방지
+        circuit_box.setAlignment(Qt.AlignmentFlag.AlignTop)
         circuit_box.addWidget(self.palette)
-        circuit_box.addWidget(self.view, stretch=1)
+        circuit_box.addWidget(self.view)
 
         self.step_instruction = QTextEdit()
         self.step_instruction.setReadOnly(True)
-        self.step_instruction.setMaximumHeight(160)
+        # 설명 영역 높이를 모든 튜토리얼에서 동일하게 고정
+        self.step_instruction.setFixedHeight(130)
 
         # -----------------------------
         # Buttons
@@ -1487,6 +1565,7 @@ class TutorialTab(QWidget):
         self.btn_hint = QPushButton("Hint")
         self.btn_reset = QPushButton("Reset")
         self.btn_next = QPushButton("Next")
+        self.btn_back_intro = QPushButton("Back to Intro")
         
 
         # --- Check / Hint / Reset (윗줄)
@@ -1500,6 +1579,7 @@ class TutorialTab(QWidget):
 
         # --- Next (아랫줄, 오른쪽 정렬)
         lower_btns = QHBoxLayout()
+        lower_btns.addWidget(self.btn_back_intro)
         lower_btns.addStretch()
         lower_btns.addWidget(self.btn_next)
 
@@ -1514,8 +1594,8 @@ class TutorialTab(QWidget):
         footer.addLayout(right_btns)
 
         # --- 전체 페이지 레이아웃
-        step_layout.addWidget(self.step_title)
-        step_layout.addLayout(circuit_box)
+        # 스크롤 제거: 제목/회로/설명을 모두 고정 배치 (위쪽 정렬)
+        step_layout.addLayout(circuit_box, 0)
         step_layout.addWidget(self.step_instruction)
         step_layout.addLayout(footer)
 
@@ -1529,6 +1609,7 @@ class TutorialTab(QWidget):
         self.btn_check.clicked.connect(self.check_step)
         self.btn_hint.clicked.connect(self.show_hint)
         self.btn_next.clicked.connect(self.next_step)
+        self.btn_back_intro.clicked.connect(self.go_to_intro)
         self.btn_reset.clicked.connect(self.reset_step)
         self.list_widget.currentRowChanged.connect(self.on_tutorial_selected)
 
@@ -1846,6 +1927,24 @@ class TutorialTab(QWidget):
                 hint="oracle은 회로로 직접 만들지 않습니다.",
                 #auto_setup=lambda view: self.open_oracle_dialog()
             ),
+            TutorialStep(
+                title="오라클 뒤 입력 큐비트에 Hadamard 적용",
+                instruction=(
+                    "Oracle을 적용한 뒤 입력 큐비트 q[0]에 Hadamard 게이트를 배치하세요."
+                ),
+                expected=lambda infos: any(g.gate_type == "H" and g.row == 0 for g in infos),
+                hint="입력 큐비트(q[0])에 H를 한 번 더 적용합니다."
+            ),
+            TutorialStep(
+                title="입력 큐비트 측정 및 판별",
+                instruction=(
+                    "입력 큐비트 q[0]을 측정하고 결과를 oracle 유형과 비교하세요.\n"
+                    "• constant → 측정 결과 q[0] = 0\n"
+                    "• balanced → 측정 결과 q[0] = 1"
+                ),
+                expected=lambda infos: True,  # 체크 버튼에서 시뮬레이션으로 판별
+                hint="Run Measurement로 측정 후 Check를 누르세요."
+            ),
 
 
 
@@ -1890,6 +1989,15 @@ class TutorialTab(QWidget):
         # 튜토리얼 시작 플래그 설정
         self.tutorials_started = True
 
+        # 튜토리얼에 맞는 큐비트 수로 초기화
+        required = self.get_required_qubits(self.current_tutorial)
+        if required is not None:
+            self.view.n_qubits = max(1, min(required, MAX_QUBITS))
+            # 튜토리얼에서는 scene rect를 고정값으로 유지 (일관된 레이아웃)
+            self.view.setSceneRect(0, 0, self.view.get_right_end() + 200, 500)
+            self.view.clear_circuit(remove_oracle=True)
+            self.view.draw_all()
+
         # 첫 단계 로드
         self.current_step_index = 0
         self.load_step(0)
@@ -1913,31 +2021,175 @@ class TutorialTab(QWidget):
 
         if step.auto_setup:
             step.auto_setup(self.view)
-        
-        if self.current_tutorial.name == "Deutsch Jozsa Algorithm" and self.current_step_index == 2:
-            
-            self.btn_define_oracle.show()
-        
+
+        # 오라클 정의 버튼: DJ 튜토리얼의 3~5단계(0-index 2,3,4)에서 표시
+        if self.current_tutorial.name == "Deutsch Jozsa Algorithm":
+            if self.current_step_index in (2, 3, 4):
+                self.btn_define_oracle.show()
+            else:
+                self.btn_define_oracle.hide()
         
     def check_step(self):
         infos = self.view.export_gate_infos()
         step = self.current_tutorial.steps[self.current_step_index]
+
+        # Deutsch–Jozsa 튜토리얼의 최종 판별 단계는 실제 시뮬레이션으로 확인
+        if (
+            self.current_tutorial and
+            self.current_tutorial.name == "Deutsch Jozsa Algorithm" and
+            self.current_step_index == 4  # 0-based: 5번째 단계
+        ):
+            try:
+                qc = QuantumCircuit(self.view.n_qubits, self.view.n_qubits)
+                bycol = {}
+                for g in infos:
+                    bycol.setdefault(g.col, []).append(g)
+
+                for col in sorted(bycol):
+                    ops = bycol[col]
+                    for g in ops:
+                        if g.gate_type=="H": qc.h(g.row)
+                        elif g.gate_type=="X": qc.x(g.row)
+                        elif g.gate_type=="Y": qc.y(g.row)
+                        elif g.gate_type=="Z": qc.z(g.row)
+                        elif g.gate_type=="RX": qc.rx(g.angle if g.angle is not None else 0, g.row)
+                        elif g.gate_type=="RY": qc.ry(g.angle if g.angle is not None else 0, g.row)
+                        elif g.gate_type=="RZ": qc.rz(g.angle if g.angle is not None else 0, g.row)
+
+                    ctrls = [g.row for g in ops if g.gate_type=="CTRL"]
+                    xt = [g.row for g in ops if g.gate_type=="X_T"]
+                    zt = [g.row for g in ops if g.gate_type=="Z_T"]
+
+                    if len(xt)==1:
+                        t = xt[0]
+                        if len(ctrls)==0: qc.x(t)
+                        elif len(ctrls)==1: qc.cx(ctrls[0], t)
+                        else: qc.mcx(ctrls, t)
+
+                    if len(zt)==1:
+                        t = zt[0]
+                        if len(ctrls)==0: qc.z(t)
+                        elif len(ctrls)==1: qc.cz(ctrls[0], t)
+                        else: qc.mcz(ctrls, t)
+
+                # 오라클 적용 (Deutsch–Jozsa 전용)
+                self.apply_oracle_to_qc(qc)
+
+                # 입력 큐비트(q[0]) 측정 보장
+                has_measure = any(inst.operation.name=="measure" for inst in qc.data)
+                if not has_measure:
+                    qc.measure(0, 0)
+
+                shots = 512
+                sim = AerSimulator()
+                res = sim.run(qc, shots=shots).result()
+                counts = res.get_counts()
+
+                # 리틀엔디언: bitstring의 마지막 문자가 q[0]
+                total = sum(counts.values()) or 1
+                ones = 0
+                for bitstr, c in counts.items():
+                    b = bitstr.replace(" ", "")
+                    q0 = b[-1]
+                    if q0 == '1':
+                        ones += c
+                prob_one = ones / total
+
+                expected_one = (self.oracle_type == "balanced")
+                # 허용 기준: 0.8 이상 일치
+                if (expected_one and prob_one >= 0.8) or ((not expected_one) and prob_one <= 0.2):
+                    QMessageBox.information(self, "Success", "정확합니다! (DJ 판별 성공)")
+                else:
+                    QMessageBox.warning(self, "Try again", f"DJ 판별 실패\n예상: q[0]={'1' if expected_one else '0'}\n관측: P(q[0]=1)={prob_one:.2f}")
+            except Exception as e:
+                QMessageBox.warning(self, "Simulation Error", f"{e}")
+            return
+
+        # 일반 단계 검증
         if step.expected(infos):
             QMessageBox.information(self, "Success", "정확합니다!")
         else:
             QMessageBox.warning(self, "Try again", "조건을 만족하지 않습니다.")
+
+    def apply_oracle_to_qc(self, qc: "QuantumCircuit"):
+        """현재 설정된 오라클을 Qiskit 회로에 반영 (3-qubit DJ: 2입력 + 1출력)
+        입력: q[0], q[1]  출력(y): q[2]
+        y <- y XOR f(q[0], q[1]) 형태로 구현.
+
+        - constant 0: 아무 것도 하지 않음
+        - constant 1: X(y)
+        - balanced (6가지 조합): truth_table에서 1인 입력 패턴들에 대해
+          해당 패턴을 만족할 때만 동작하는 다중 제어 X를 y에 적용한다.
+          제어-0을 구현하기 위해 해당 입력 비트가 0인 경우 앞뒤로 X를 가한다.
+        """
+        try:
+            if self.oracle_type is None:
+                return
+            # 2입력(q0,q1) + 출력(y=q2)
+            x0, x1, yq = 0, 1, 2
+            if self.oracle_type == "constant":
+                # constant 1 → y에 X, constant 0 → no-op
+                if self.oracle_truth_table and all(v == 1 for v in self.oracle_truth_table.values()):
+                    qc.x(yq)
+                return
+            # balanced: truth table의 1 패턴 각각에 대해 조건부로 y에 X를 적용
+            ones_patterns = [k for k, v in (self.oracle_truth_table or {}).items() if v == 1]
+            # 안전장치: 2개만 1이어야 함
+            if len(ones_patterns) != 2:
+                return
+
+            for pat in ones_patterns:
+                # pat는 "00","01","10","11" 중 하나
+                b0 = pat[0]  # q0 기대값
+                b1 = pat[1]  # q1 기대값
+                # 제어-0 구현 위해 해당 비트가 '0'이면 앞뒤로 X
+                pre = []
+                if b0 == '0':
+                    qc.x(x0); pre.append(x0)
+                if b1 == '0':
+                    qc.x(x1); pre.append(x1)
+
+                # 이제 두 제어가 모두 '1'일 때만 동작하는 mcx
+                qc.mcx([x0, x1], yq)
+
+                # 원복
+                for q in reversed(pre):
+                    qc.x(q)
+        except Exception:
+            # 오라클 미설정 또는 환경 오류는 무시
+            pass
+
+    def get_required_qubits(self, tutorial: Tutorial | None) -> int | None:
+        """튜토리얼별 최소 필요 큐비트 수를 반환"""
+        if tutorial is None:
+            return None
+        name = tutorial.name
+        if name == "Hadamard Gate":
+            return 1
+        if name == "CNOT Gate":
+            return 2
+        if name == "Quantum Fourier Transform":
+            return 3
+        if name == "Superdense Coding":
+            return 2
+        if name == "Deutsch Jozsa Algorithm":
+            # 2비트 입력 + 1비트 출력(y)로 총 3 큐비트 필요
+            return 3
+        return None
 
     def run_measurement_tutorial(self):
         """TutorialTab에서 현재 회로로 측정 실행"""
         try:
             # ComposerTab과 동일 로직: 회로 빌드
             infos = self.view.export_gate_infos()
+            # 클래식 레지스터는 아직 n_qubits로 초기화
             qc = QuantumCircuit(self.view.n_qubits, self.view.n_qubits)
 
             bycol = {}
             for g in infos:
                 bycol.setdefault(g.col, []).append(g)
 
+            measured_qubits = set()  # 측정된 큐비트 추적
             for col in sorted(bycol):
                 ops = bycol[col]
                 for g in ops:
@@ -1965,15 +2217,37 @@ class TutorialTab(QWidget):
                     elif len(ctrls)==1: qc.cz(ctrls[0], t)
                     else: qc.mcz(ctrls, t)
 
-            # 측정 없으면 전체 측정
-            has_measure = any(inst.operation.name=="measure" for inst in qc.data)
-            if not has_measure:
-                qc.measure_all()
+                # 측정 게이트 처리: 해당 큐비트만 측정
+                for g in ops:
+                    if g.gate_type == "MEASURE":
+                        measured_qubits.add(g.row)
+                        qc.measure(g.row, g.row)
+
+            # 오라클 적용 (Deutsch–Jozsa 전용)
+            self.apply_oracle_to_qc(qc)
+
+            # 측정 게이트가 없으면 경고
+            if not measured_qubits:
+                QMessageBox.warning(self, "No Measurement Gate", "측정(M)게이트가 없습니다!")
+                return
+            
+            # 측정된 큐비트 개수만큼만 결과를 자른다
+            n_measured = len(measured_qubits)
 
             sim = AerSimulator()
             shots = 1024
             res = sim.run(qc, shots=shots).result()
             counts = res.get_counts()
+
+            # 측정된 큐비트만 추출: 오른쪽 n_measured 비트만
+            if n_measured < self.view.n_qubits:
+                filtered_counts = {}
+                for bitstring, count in counts.items():
+                    # 클래식 비트 문자열의 맨 오른쪽 n_measured 비트만 추출
+                    clean = bitstring.replace(" ", "")
+                    truncated = clean[-n_measured:] if n_measured > 0 else ""
+                    filtered_counts[truncated] = filtered_counts.get(truncated, 0) + count
+                counts = filtered_counts
 
             # 결과 포맷 (Composer와 동일)
             result_lines = [
@@ -2000,6 +2274,15 @@ class TutorialTab(QWidget):
     def show_hint(self):
         step = self.current_tutorial.steps[self.current_step_index]
         QMessageBox.information(self, "Hint", step.hint)
+
+    def go_to_intro(self):
+        """튜토리얼 소개 페이지로 돌아가기"""
+        self.stack.setCurrentIndex(0)
+        self.tutorials_started = False
+        if self.current_tutorial:
+            theory_key = self.current_tutorial.theory_key
+            self.intro_title.setText(self.current_tutorial.name)
+            self.intro_text.setText(self.TUTORIAL_DATA.get(theory_key, "이 튜토리얼에 대한 정보가 없습니다."))
 
     def next_step(self):
         if not self.current_tutorial:
@@ -2073,6 +2356,12 @@ class BlochWindow(QDialog):
 
 def main():
     app = QApplication(sys.argv)
+    # Windows 한글 가독성 향상을 위해 기본 폰트를 맑은 고딕으로 설정
+    try:
+        from PyQt6.QtGui import QFont
+        app.setFont(QFont("Malgun Gothic", 10))
+    except Exception:
+        pass
     w = MainWindow()
     w.resize(1450, 800)
     w.show()
