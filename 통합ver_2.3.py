@@ -283,6 +283,14 @@ class GateItem(QGraphicsRectItem):
             self.drag_started = False
         super().mousePressEvent(e)
 
+    def mouseDoubleClickEvent(self, e):
+        # 더블클릭으로도 각도 편집 가능 (회로에 놓인 RX/RY/RZ만)
+        if not self.palette_mode and self.gate_type in ("RX","RY","RZ"):
+            self.open_angle_dialog()
+            e.accept()
+            return
+        super().mouseDoubleClickEvent(e)
+
     def mouseMoveEvent(self, e):
         if self.palette_mode:
             if not self.drag_started:
@@ -1474,6 +1482,7 @@ class TutorialTab(QWidget):
         self.btn_define_oracle.hide()
 
 
+        self.btn_measure_tutorial = QPushButton("Run Measurement")
         self.btn_check = QPushButton("Check")
         self.btn_hint = QPushButton("Hint")
         self.btn_reset = QPushButton("Reset")
@@ -1482,6 +1491,7 @@ class TutorialTab(QWidget):
 
         # --- Check / Hint / Reset (윗줄)
         upper_btns = QHBoxLayout()
+        upper_btns.addWidget(self.btn_measure_tutorial)
         upper_btns.addWidget(self.btn_check)
         upper_btns.addWidget(self.btn_hint)
         upper_btns.addWidget(self.btn_reset)
@@ -1515,6 +1525,7 @@ class TutorialTab(QWidget):
         # Signals
         # ======================================================
         self.btn_start.clicked.connect(self.start_tutorial)
+        self.btn_measure_tutorial.clicked.connect(self.run_measurement_tutorial)
         self.btn_check.clicked.connect(self.check_step)
         self.btn_hint.clicked.connect(self.show_hint)
         self.btn_next.clicked.connect(self.next_step)
@@ -1915,6 +1926,76 @@ class TutorialTab(QWidget):
             QMessageBox.information(self, "Success", "정확합니다!")
         else:
             QMessageBox.warning(self, "Try again", "조건을 만족하지 않습니다.")
+
+    def run_measurement_tutorial(self):
+        """TutorialTab에서 현재 회로로 측정 실행"""
+        try:
+            # ComposerTab과 동일 로직: 회로 빌드
+            infos = self.view.export_gate_infos()
+            qc = QuantumCircuit(self.view.n_qubits, self.view.n_qubits)
+
+            bycol = {}
+            for g in infos:
+                bycol.setdefault(g.col, []).append(g)
+
+            for col in sorted(bycol):
+                ops = bycol[col]
+                for g in ops:
+                    if g.gate_type=="H": qc.h(g.row)
+                    elif g.gate_type=="X": qc.x(g.row)
+                    elif g.gate_type=="Y": qc.y(g.row)
+                    elif g.gate_type=="Z": qc.z(g.row)
+                    elif g.gate_type=="RX": qc.rx(g.angle if g.angle is not None else 0, g.row)
+                    elif g.gate_type=="RY": qc.ry(g.angle if g.angle is not None else 0, g.row)
+                    elif g.gate_type=="RZ": qc.rz(g.angle if g.angle is not None else 0, g.row)
+
+                ctrls = [g.row for g in ops if g.gate_type=="CTRL"]
+                xt = [g.row for g in ops if g.gate_type=="X_T"]
+                zt = [g.row for g in ops if g.gate_type=="Z_T"]
+
+                if len(xt)==1:
+                    t = xt[0]
+                    if len(ctrls)==0: qc.x(t)
+                    elif len(ctrls)==1: qc.cx(ctrls[0], t)
+                    else: qc.mcx(ctrls, t)
+
+                if len(zt)==1:
+                    t = zt[0]
+                    if len(ctrls)==0: qc.z(t)
+                    elif len(ctrls)==1: qc.cz(ctrls[0], t)
+                    else: qc.mcz(ctrls, t)
+
+            # 측정 없으면 전체 측정
+            has_measure = any(inst.operation.name=="measure" for inst in qc.data)
+            if not has_measure:
+                qc.measure_all()
+
+            sim = AerSimulator()
+            shots = 1024
+            res = sim.run(qc, shots=shots).result()
+            counts = res.get_counts()
+
+            # 결과 포맷 (Composer와 동일)
+            result_lines = [
+                "═" * 60,
+                "📊 양자 측정 결과",
+                "═" * 60,
+                f"\n총 시행 횟수: {shots}번\n",
+                "주의: 결과는 리틀엔디언(Little Endian) 형식으로 표시됩니다.",
+                "      (오른쪽이 q[0], 왼쪽이 q[n-1]입니다)\n",
+                "측정 결과:",
+                "─" * 60
+            ]
+            sorted_counts = sorted(counts.items(), key=lambda x: x[1], reverse=True)
+            for bitstring, count in sorted_counts:
+                clean = bitstring.replace(" ", "")
+                pct = (count / shots) * 100
+                result_lines.append(f"|{clean}⟩: {count:4d}회 ({pct:6.2f}%)")
+            result_lines.append("═" * 60)
+            QMessageBox.information(self, "Measurement Result", "\n".join(result_lines))
+
+        except Exception as e:
+            QMessageBox.warning(self, "Measurement Error", f"{e}")
 
     def show_hint(self):
         step = self.current_tutorial.steps[self.current_step_index]
