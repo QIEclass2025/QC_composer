@@ -4,6 +4,7 @@
 # ============================================================
 
 from __future__ import annotations
+
 import sys
 import math
 from dataclasses import dataclass
@@ -17,7 +18,7 @@ from PyQt6.QtWidgets import (
     QSplitter, QScrollArea, QSizePolicy,QListWidget,QStackedWidget, QRadioButton, QGroupBox, QGridLayout, QCheckBox      # tutorial용 import
 )
 from PyQt6.QtGui import QColor, QPen, QPainter, QFont, QBrush, QLinearGradient, QCursor, QDrag
-from PyQt6.QtCore import Qt, QRectF, QPointF, QMimeData
+from PyQt6.QtCore import Qt, QRectF, QPointF, QMimeData, qInstallMessageHandler, QtMsgType
 
 from qiskit import QuantumCircuit
 from qiskit_aer import AerSimulator
@@ -380,14 +381,23 @@ class OracleGateItem(QGraphicsRectItem):
         self.setBrush(QColor("#E6F0FF"))
         self.setPen(QPen(Qt.GlobalColor.black, 2))
 
-        label = QGraphicsTextItem("Uf", self)
-        label.setPos(self.WIDTH/2 - 10, height/2 - 10)
-
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, False)
 
         self.setZValue(10)
     
+    def paint(self, painter, option, widget):
+        # 배경 사각형 그리기
+        super().paint(painter, option, widget)
+        
+        # "Uf" 텍스트 그리기
+        font = QFont("Malgun Gothic", 10, QFont.Weight.Bold)
+        painter.setFont(font)
+        painter.setPen(QPen(Qt.GlobalColor.black))
+        
+        rect = self.rect()
+        text_rect = QRectF(rect.x(), rect.y(), rect.width(), rect.height())
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, "Uf")
     
     
 
@@ -851,13 +861,19 @@ class CircuitView(QGraphicsView):
         if old in self.circuit:
             del self.circuit[old]
 
-        # (6) 새 위치에 Gate가 있으면 스왑
+        # (6) 새 위치에 Gate가 있으면 처리
         existing = self.circuit.get(new)
         if existing is not None and existing is not g:
             if old is None:
-                del self.circuit[new]
-                self.scene.removeItem(existing)
+                # 팔레트에서 새로 끌어온 게이트가 이미 채워진 셀로 드롭된 경우
+                # 기존 게이트는 그대로 두고, 신규 게이트만 버린다.
+                if g.scene() is self.scene:
+                    self.scene.removeItem(g)
+                if g is self.palette_gate:
+                    self.palette_gate = None
+                return
             else:
+                # 기존 위치(old)가 있는 경우에만 스왑
                 self.circuit[old] = existing
                 existing.row, existing.col = old
                 existing.setPos(
@@ -1744,11 +1760,7 @@ class TutorialTab(QWidget):
 
 
         btn_ok.clicked.connect(on_ok)
-        result = dialog.exec()
-
-        if result != QDialog.accepted:
-            self.oracle_truth_table = None
-            self.oracle_type = None
+        dialog.exec()
 
 
 
@@ -1888,31 +1900,29 @@ class TutorialTab(QWidget):
 
         deutsch_jozsa_steps = [
             TutorialStep(
-                title="초기 상태 |0⟩|1⟩ 만들기",
+                title="초기 상태 |0⟩|0⟩|1⟩ 만들기",
                 instruction=(
-                    "Deutsch–Jozsa 알고리즘은 |0⟩|1⟩ 상태에서 시작합니다.\n"
-                    "두 번째 큐비트 q[1]에 X 게이트를 배치하세요."
+                    "Deutsch–Jozsa 알고리즘은 |0⟩|0⟩|1⟩ 상태에서 시작합니다.\n"
+                    "출력 큐비트 q[2]에 X 게이트를 배치하세요."
                 ),
-                expected=lambda infos: (
-                    len(infos) == 1 and
-                    infos[0].gate_type == "X" and
-                    infos[0].row == 1
-                ),
-                hint="q[1]에 X 게이트 하나만 놓으면 됩니다."
+                expected=lambda infos: any(g.gate_type == "X" and g.row == 2 for g in infos),
+                hint="q[2]에 X 게이트를 놓으세요."
             ),
 
             TutorialStep(
-                title="입력 큐비트 중첩 만들기",
+                title="모든 큐비트에 Hadamard 적용",
                 instruction=(
-                    "이제 입력 큐비트에 Hadamard 게이트를 적용합니다.\n"
-                    "q[0]에 Hadamard 게이트를 배치하세요."
+                    "모든 큐비트에 Hadamard 게이트를 적용합니다.\n"
+                    "q[0], q[1], q[2]에 각각 Hadamard 게이트를 배치하세요.\n"
+                    "(출력 큐비트 q[2]의 H는 위상 킥백에 필수입니다)"
                 ),
                 expected=lambda infos: (
-                    len(infos) == 2 and
-                    any(g.gate_type == "X" and g.row == 1 for g in infos) and
-                    any(g.gate_type == "H" and g.row == 0 for g in infos)
+                    any(g.gate_type == "X" and g.row == 2 for g in infos) and
+                    any(g.gate_type == "H" and g.row == 0 for g in infos) and
+                    any(g.gate_type == "H" and g.row == 1 for g in infos) and
+                    any(g.gate_type == "H" and g.row == 2 for g in infos)
                 ),
-                hint="출력 큐비트(q[1])에는 아무것도 하지 않습니다."
+                hint="q[0], q[1], q[2] 세 큐비트 모두에 H 게이트를 놓으세요."
             ),
 
             TutorialStep(
@@ -1921,29 +1931,38 @@ class TutorialTab(QWidget):
                     "숨겨진 함수 f(x)를 정의합니다.\n\n"
                     "• constant / balanced 중 선택\n"
                     "• constant: 출력이 항상 0 또는 1\n"
-                    "• balanced: 00,01,10,11 중 두 개만 1"
+                    "• balanced: 00,01,10,11 중 두 개만 1\n\n"
+                    "Define Oracle 버튼을 눌러 정의하세요."
                 ),
-                expected=lambda infos: self.oracle_truth_table is not None,
-                hint="oracle은 회로로 직접 만들지 않습니다.",
+                expected=lambda infos: True,  # check_step에서 특별 처리
+                hint="Define Oracle 버튼을 눌러 constant 또는 balanced를 선택하세요.",
                 #auto_setup=lambda view: self.open_oracle_dialog()
             ),
             TutorialStep(
                 title="오라클 뒤 입력 큐비트에 Hadamard 적용",
                 instruction=(
-                    "Oracle을 적용한 뒤 입력 큐비트 q[0]에 Hadamard 게이트를 배치하세요."
+                    "Oracle을 적용한 뒤 입력 큐비트 q[0], q[1]에 Hadamard 게이트를 배치하세요."
                 ),
-                expected=lambda infos: any(g.gate_type == "H" and g.row == 0 for g in infos),
-                hint="입력 큐비트(q[0])에 H를 한 번 더 적용합니다."
+                expected=lambda infos: (
+                    sum(1 for g in infos if g.gate_type == "H" and g.row == 0) >= 2 and
+                    sum(1 for g in infos if g.gate_type == "H" and g.row == 1) >= 2
+                ),
+                hint="q[0]과 q[1] 두 입력 큐비트에 H를 한 번 더 적용합니다."
             ),
             TutorialStep(
                 title="입력 큐비트 측정 및 판별",
                 instruction=(
-                    "입력 큐비트 q[0]을 측정하고 결과를 oracle 유형과 비교하세요.\n"
-                    "• constant → 측정 결과 q[0] = 0\n"
-                    "• balanced → 측정 결과 q[0] = 1"
+                    "모든 입력 큐비트 q[0], q[1]에 측정(M) 게이트를 배치하세요.\n\n"
+                    "예상 결과:\n"
+                    "• constant → 측정 결과가 모두 |00⟩\n"
+                    "• balanced → 측정 결과에 |00⟩이 거의 없음 (|01⟩, |10⟩, |11⟩ 중 하나)\n\n"
+                    "M 게이트 배치 후 Check를 눌러 판별합니다."
                 ),
-                expected=lambda infos: True,  # 체크 버튼에서 시뮬레이션으로 판별
-                hint="Run Measurement로 측정 후 Check를 누르세요."
+                expected=lambda infos: (
+                    any(g.gate_type == "MEASURE" and g.row == 0 for g in infos) and
+                    any(g.gate_type == "MEASURE" and g.row == 1 for g in infos)
+                ),
+                hint="q[0]과 q[1] 두 입력 큐비트에 M(측정) 게이트를 놓으세요."
             ),
 
 
@@ -2033,6 +2052,33 @@ class TutorialTab(QWidget):
         infos = self.view.export_gate_infos()
         step = self.current_tutorial.steps[self.current_step_index]
 
+        # 모든 이전 단계 확인 (누적 검증)
+        for i in range(self.current_step_index):
+            prev_step = self.current_tutorial.steps[i]
+            # DJ 3단계(oracle 정의)는 특별 처리
+            if self.current_tutorial and self.current_tutorial.name == "Deutsch Jozsa Algorithm" and i == 2:
+                if self.oracle_truth_table is None:
+                    QMessageBox.warning(self, "Previous Step Incomplete", f"단계 {i+1}: {prev_step.title}\nOracle이 정의되지 않았습니다.")
+                    return
+            elif not prev_step.expected(infos):
+                QMessageBox.warning(self, "Previous Step Incomplete", f"단계 {i+1}: {prev_step.title}\n이 완료되지 않았습니다.")
+                return
+
+        # DJ 3단계(oracle 정의) 특별 처리
+        if (
+            self.current_tutorial and
+            self.current_tutorial.name == "Deutsch Jozsa Algorithm" and
+            self.current_step_index == 2  # 0-based: 3번째 단계
+        ):
+            # 디버그 정보
+            debug_msg = f"oracle_type: {self.oracle_type}\noracle_truth_table: {self.oracle_truth_table}"
+            
+            if self.oracle_truth_table is not None:
+                QMessageBox.information(self, "Success", f"정확합니다! Oracle이 정의되었습니다.\n\n{debug_msg}")
+            else:
+                QMessageBox.warning(self, "Try again", f"Define Oracle 버튼을 눌러 Oracle을 정의하세요.\n\n{debug_msg}")
+            return
+
         # Deutsch–Jozsa 튜토리얼의 최종 판별 단계는 실제 시뮬레이션으로 확인
         if (
             self.current_tutorial and
@@ -2045,8 +2091,15 @@ class TutorialTab(QWidget):
                 for g in infos:
                     bycol.setdefault(g.col, []).append(g)
 
-                for col in sorted(bycol):
-                    ops = bycol[col]
+                oracle_col = self.view.get_oracle_column()
+                
+                # Oracle 열 기준으로 앞/뒤 분리
+                before_oracle = {col: ops for col, ops in bycol.items() if col < oracle_col}
+                after_oracle = {col: ops for col, ops in bycol.items() if col > oracle_col}
+                
+                # 1. Oracle 이전 게이트들 처리
+                for col in sorted(before_oracle.keys()):
+                    ops = before_oracle[col]
                     for g in ops:
                         if g.gate_type=="H": qc.h(g.row)
                         elif g.gate_type=="X": qc.x(g.row)
@@ -2072,10 +2125,43 @@ class TutorialTab(QWidget):
                         elif len(ctrls)==1: qc.cz(ctrls[0], t)
                         else: qc.mcz(ctrls, t)
 
-                # 오라클 적용 (Deutsch–Jozsa 전용)
+                # 2. Oracle 적용
                 self.apply_oracle_to_qc(qc)
 
-                # 입력 큐비트(q[0]) 측정 보장
+                # 3. Oracle 이후 게이트들 처리
+                for col in sorted(after_oracle.keys()):
+                    ops = after_oracle[col]
+                    for g in ops:
+                        if g.gate_type=="H": qc.h(g.row)
+                        elif g.gate_type=="X": qc.x(g.row)
+                        elif g.gate_type=="Y": qc.y(g.row)
+                        elif g.gate_type=="Z": qc.z(g.row)
+                        elif g.gate_type=="RX": qc.rx(g.angle if g.angle is not None else 0, g.row)
+                        elif g.gate_type=="RY": qc.ry(g.angle if g.angle is not None else 0, g.row)
+                        elif g.gate_type=="RZ": qc.rz(g.angle if g.angle is not None else 0, g.row)
+
+                    ctrls = [g.row for g in ops if g.gate_type=="CTRL"]
+                    xt = [g.row for g in ops if g.gate_type=="X_T"]
+                    zt = [g.row for g in ops if g.gate_type=="Z_T"]
+
+                    if len(xt)==1:
+                        t = xt[0]
+                        if len(ctrls)==0: qc.x(t)
+                        elif len(ctrls)==1: qc.cx(ctrls[0], t)
+                        else: qc.mcx(ctrls, t)
+
+                    if len(zt)==1:
+                        t = zt[0]
+                        if len(ctrls)==0: qc.z(t)
+                        elif len(ctrls)==1: qc.cz(ctrls[0], t)
+                        else: qc.mcz(ctrls, t)
+
+                # 측정 게이트 추가
+                for g in infos:
+                    if g.gate_type == "MEASURE":
+                        qc.measure(g.row, g.row)
+                
+                # 측정 게이트가 없으면 추가
                 has_measure = any(inst.operation.name=="measure" for inst in qc.data)
                 if not has_measure:
                     qc.measure(0, 0)
@@ -2085,22 +2171,95 @@ class TutorialTab(QWidget):
                 res = sim.run(qc, shots=shots).result()
                 counts = res.get_counts()
 
-                # 리틀엔디언: bitstring의 마지막 문자가 q[0]
+                # 실제로 측정된 큐비트만 추출 (회로의 M 게이트 확인)
+                measured_qubits = set()
+                for g in infos:
+                    if g.gate_type == "MEASURE":
+                        measured_qubits.add(g.row)
+                
+                n_measured = len(measured_qubits)
+                
+                # 측정된 큐비트만 결과에 표시 (필터링)
+                if n_measured < self.view.n_qubits and n_measured > 0:
+                    filtered_counts = {}
+                    for bitstring, count in counts.items():
+                        clean = bitstring.replace(" ", "")
+                        # 리틀엔디언: 오른쪽이 q[0]이므로 마지막 n_measured 비트만
+                        truncated = clean[-n_measured:] if n_measured > 0 else ""
+                        filtered_counts[truncated] = filtered_counts.get(truncated, 0) + count
+                    counts = filtered_counts
+
+                # Qiskit Circuit을 코드 형태로 출력
+                qc_code_lines = []
+                qc_code_lines.append("# Qiskit Circuit Code:")
+                qc_code_lines.append(f"qc = QuantumCircuit({self.view.n_qubits})")
+                for instr, qargs, cargs in qc.data:
+                    gate_name = instr.name
+                    qubit_indices = [qc.find_bit(q).index for q in qargs]
+                    if gate_name == 'measure':
+                        qc_code_lines.append(f"qc.measure({qubit_indices[0]}, {qubit_indices[0]})")
+                    elif len(qubit_indices) == 1:
+                        qc_code_lines.append(f"qc.{gate_name}({qubit_indices[0]})")
+                    elif len(qubit_indices) == 2:
+                        qc_code_lines.append(f"qc.{gate_name}({qubit_indices[0]}, {qubit_indices[1]})")
+                    else:
+                        ctrl_qubits = ', '.join(str(q) for q in qubit_indices[:-1])
+                        qc_code_lines.append(f"qc.{gate_name}([{ctrl_qubits}], {qubit_indices[-1]})")
+                
+                circuit_code = "\n".join(qc_code_lines)
+
+                # DJ 알고리즘 판별: 모든 입력 큐비트 측정 결과 확인
+                # 리틀엔디언이므로 오른쪽부터 q[0], q[1], ...
+                # constant: 측정 결과가 모두 00 (입력 큐비트들이 모두 0)
+                # balanced: 측정 결과에 00이 거의 없음
+                # 주의: counts는 이미 필터링되어 측정된 큐비트만 포함
                 total = sum(counts.values()) or 1
-                ones = 0
+                count_00 = 0
+                
                 for bitstr, c in counts.items():
                     b = bitstr.replace(" ", "")
-                    q0 = b[-1]
-                    if q0 == '1':
-                        ones += c
-                prob_one = ones / total
+                    # 필터링 후 결과는 이미 측정된 큐비트만 포함
+                    # q[0], q[1]만 측정했으면 2비트만 있음
+                    if b == "00":
+                        count_00 += c
+                
+                prob_00 = count_00 / total
 
-                expected_one = (self.oracle_type == "balanced")
-                # 허용 기준: 0.8 이상 일치
-                if (expected_one and prob_one >= 0.8) or ((not expected_one) and prob_one <= 0.2):
-                    QMessageBox.information(self, "Success", "정확합니다! (DJ 판별 성공)")
-                else:
-                    QMessageBox.warning(self, "Try again", f"DJ 판별 실패\n예상: q[0]={'1' if expected_one else '0'}\n관측: P(q[0]=1)={prob_one:.2f}")
+                expected_constant = (self.oracle_type == "constant")
+            
+                # constant: prob_00 높아야 함 (>0.8)
+                # balanced: prob_00 낮아야 함 (<0.2)
+                success = (expected_constant and prob_00 >= 0.8) or ((not expected_constant) and prob_00 <= 0.2)
+                
+                # 간소화된 결과 정보
+                result_info = (
+                    f"🎯 DJ Algorithm Verification: {'✅ SUCCESS' if success else '❌ FAILED'}\n\n"
+                    f"📋 Defined Oracle:\n"
+                    f"   Type: {self.oracle_type.upper()}\n"
+                    f"   Truth Table: {self.oracle_truth_table}\n\n"
+                    f"📊 Input Qubits (q[0], q[1]) Measurement Result:\n"
+                    f"   {counts}\n"
+                    f"   P(00) = {prob_00:.3f}\n\n"
+                    f"Expected: {'|00⟩ (constant)' if expected_constant else 'NOT |00⟩ (balanced)'}\n"
+                    f"Actual: {'|00⟩ (constant)' if prob_00 >= 0.8 else 'NOT |00⟩ (balanced)' if prob_00 <= 0.2 else 'INCONCLUSIVE'}"
+                )
+                
+                # 복사 가능한 다이얼로그 표시
+                dialog = QDialog(self)
+                dialog.setWindowTitle("DJ Algorithm Result")
+                layout = QVBoxLayout(dialog)
+                
+                text_edit = QTextEdit()
+                text_edit.setPlainText(result_info)
+                text_edit.setReadOnly(True)
+                text_edit.setMinimumSize(500, 300)
+                layout.addWidget(text_edit)
+                
+                btn_ok = QPushButton("OK")
+                btn_ok.clicked.connect(dialog.accept)
+                layout.addWidget(btn_ok)
+                
+                dialog.exec()
             except Exception as e:
                 QMessageBox.warning(self, "Simulation Error", f"{e}")
             return
@@ -2127,35 +2286,53 @@ class TutorialTab(QWidget):
                 return
             # 2입력(q0,q1) + 출력(y=q2)
             x0, x1, yq = 0, 1, 2
+            print(f"\n=== Oracle Application ===")
+            print(f"Type: {self.oracle_type}")
+            print(f"Truth Table: {self.oracle_truth_table}")
+            
             if self.oracle_type == "constant":
                 # constant 1 → y에 X, constant 0 → no-op
                 if self.oracle_truth_table and all(v == 1 for v in self.oracle_truth_table.values()):
+                    print(f"Constant 1: Applying X(q{yq})")
                     qc.x(yq)
+                else:
+                    print(f"Constant 0: No gates")
                 return
+            
             # balanced: truth table의 1 패턴 각각에 대해 조건부로 y에 X를 적용
             ones_patterns = [k for k, v in (self.oracle_truth_table or {}).items() if v == 1]
+            print(f"Ones patterns: {ones_patterns}")
+            
             # 안전장치: 2개만 1이어야 함
             if len(ones_patterns) != 2:
+                print(f"ERROR: Expected 2 ones, got {len(ones_patterns)}")
                 return
 
-            for pat in ones_patterns:
+            for i, pat in enumerate(ones_patterns):
                 # pat는 "00","01","10","11" 중 하나
                 b0 = pat[0]  # q0 기대값
                 b1 = pat[1]  # q1 기대값
+                print(f"\nPattern {i+1}: '{pat}' -> expecting q0={b0}, q1={b1}")
+                
                 # 제어-0 구현 위해 해당 비트가 '0'이면 앞뒤로 X
                 pre = []
                 if b0 == '0':
+                    print(f"  X(q{x0})")
                     qc.x(x0); pre.append(x0)
                 if b1 == '0':
+                    print(f"  X(q{x1})")
                     qc.x(x1); pre.append(x1)
 
                 # 이제 두 제어가 모두 '1'일 때만 동작하는 mcx
+                print(f"  MCX([q{x0}, q{x1}], q{yq})")
                 qc.mcx([x0, x1], yq)
 
                 # 원복
                 for q in reversed(pre):
+                    print(f"  X(q{q})")
                     qc.x(q)
-        except Exception:
+        except Exception as e:
+            print(f"Oracle error: {e}")
             # 오라클 미설정 또는 환경 오류는 무시
             pass
 
@@ -2190,8 +2367,48 @@ class TutorialTab(QWidget):
                 bycol.setdefault(g.col, []).append(g)
 
             measured_qubits = set()  # 측정된 큐비트 추적
-            for col in sorted(bycol):
-                ops = bycol[col]
+            oracle_col = self.view.get_oracle_column()  # Oracle이 배치될 열
+            
+            # Oracle 열 기준으로 앞/뒤 분리
+            before_oracle = {col: ops for col, ops in bycol.items() if col < oracle_col}
+            after_oracle = {col: ops for col, ops in bycol.items() if col > oracle_col}
+            
+            # 1. Oracle 이전 게이트들 처리
+            for col in sorted(before_oracle.keys()):
+                ops = before_oracle[col]
+                for g in ops:
+                    if g.gate_type=="H": qc.h(g.row)
+                    elif g.gate_type=="X": qc.x(g.row)
+                    elif g.gate_type=="Y": qc.y(g.row)
+                    elif g.gate_type=="Z": qc.z(g.row)
+                    elif g.gate_type=="RX": qc.rx(g.angle if g.angle is not None else 0, g.row)
+                    elif g.gate_type=="RY": qc.ry(g.angle if g.angle is not None else 0, g.row)
+                    elif g.gate_type=="RZ": qc.rz(g.angle if g.angle is not None else 0, g.row)
+
+                ctrls = [g.row for g in ops if g.gate_type=="CTRL"]
+                xt = [g.row for g in ops if g.gate_type=="X_T"]
+                zt = [g.row for g in ops if g.gate_type=="Z_T"]
+
+                if len(xt)==1:
+                    t = xt[0]
+                    if len(ctrls)==0: qc.x(t)
+                    elif len(ctrls)==1: qc.cx(ctrls[0], t)
+                    else: qc.mcx(ctrls, t)
+
+                if len(zt)==1:
+                    t = zt[0]
+                    if len(ctrls)==0: qc.z(t)
+                    elif len(ctrls)==1: qc.cz(ctrls[0], t)
+                    else: qc.mcz(ctrls, t)
+            
+            # 2. Oracle 적용 (DJ 튜토리얼인 경우만)
+            if (self.current_tutorial and 
+                self.current_tutorial.name == "Deutsch Jozsa Algorithm"):
+                self.apply_oracle_to_qc(qc)
+            
+            # 3. Oracle 이후 게이트들 처리
+            for col in sorted(after_oracle.keys()):
+                ops = after_oracle[col]
                 for g in ops:
                     if g.gate_type=="H": qc.h(g.row)
                     elif g.gate_type=="X": qc.x(g.row)
@@ -2222,9 +2439,6 @@ class TutorialTab(QWidget):
                     if g.gate_type == "MEASURE":
                         measured_qubits.add(g.row)
                         qc.measure(g.row, g.row)
-
-            # 오라클 적용 (Deutsch–Jozsa 전용)
-            self.apply_oracle_to_qc(qc)
 
             # 측정 게이트가 없으면 경고
             if not measured_qubits:
@@ -2355,6 +2569,12 @@ class BlochWindow(QDialog):
         self.activateWindow()
 
 def main():
+    # Qt 디버그 메시지 억제
+    def suppress_qt_warnings(msg_type, context, message):
+        pass  # 모든 Qt 메시지 무시
+    
+    qInstallMessageHandler(suppress_qt_warnings)
+    
     app = QApplication(sys.argv)
     # Windows 한글 가독성 향상을 위해 기본 폰트를 맑은 고딕으로 설정
     try:
