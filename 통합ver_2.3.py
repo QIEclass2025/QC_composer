@@ -10,12 +10,12 @@ import math
 from dataclasses import dataclass
 from typing import Dict, Tuple, Optional, List, Callable
 
-from PyQt6.QtWidgets import (
+from PyQt6.QtWidgets import (QAbstractScrollArea,
     QApplication,QProgressBar, QWidget, QHBoxLayout, QVBoxLayout,
     QGraphicsView, QGraphicsScene, QGraphicsRectItem, QGraphicsItem,
     QGraphicsTextItem, QLabel, QPushButton, QMessageBox,
     QTabWidget, QDialog, QTextEdit, QInputDialog, QGraphicsDropShadowEffect,
-    QSplitter, QScrollArea, QSizePolicy,QListWidget,QStackedWidget, QRadioButton, QGroupBox, QGridLayout, QCheckBox      # tutorial용 import
+    QSplitter,QFrame, QScrollArea, QSizePolicy,QListWidget,QStackedWidget, QRadioButton, QGroupBox, QGridLayout, QCheckBox      # tutorial용 import
 )
 from PyQt6.QtGui import QColor, QPen, QPainter, QFont, QBrush, QLinearGradient, QCursor, QDrag
 from PyQt6.QtCore import Qt, QRectF, QPointF, QMimeData, qInstallMessageHandler, QtMsgType
@@ -1407,59 +1407,82 @@ def is_balanced_truth_table(truth_table: dict[str, int]) -> bool:
 class TutorialTab(QWidget):
 
     TUTORIAL_DATA = {
-        "1. Qubit과 Hadamard Gate": 
+        "1. Qubit과 Hadamard Gate":
             "## Qubit과 Hadamard Gate\n\n"
-            "**1. Qubit (양자 비트):** 고전적인 비트(0 또는 1)와 달리, 큐비트는 $\\left|0\\right\\rangle$과 $\\left|1\\right\\rangle$ 상태의 **중첩(Superposition)** 상태를 가질 수 있습니다. 이는 동시에 여러 값을 나타낼 수 있음을 의미하며, 계산의 병렬성을 부여합니다.\n\n"
-            "**2. Hadamard (H) Gate:** 이 게이트는 큐비트를 순수한 $\\left|0\\right\\rangle$ 또는 $\\left|1\\right\\rangle$ 상태에서 완벽한 중첩 상태로 만듭니다. 회로에 H 게이트를 추가하고 Run Measurement를 실행하여 결과를 확인해 보세요.",
-        
-        "2. CNOT과 Entanglement": 
+            "**1. Qubit (양자 비트)**\n"
+            "고전적인 비트는 0 또는 1 중 하나의 값만 가질 수 있습니다.\n"
+            "하지만 큐비트는 0 상태와 1 상태가 동시에 섞인 상태로 존재할 수 있습니다.\n"
+            "이를 **중첩(Superposition)**이라고 부릅니다.\n\n"
+            "중첩 덕분에 양자 컴퓨터는 여러 경우를 동시에 계산할 수 있습니다.\n\n"
+            "**2. Hadamard (H) Gate**\n"
+            "Hadamard 게이트는 큐비트를 중첩 상태로 만들어 주는 가장 기본적인 게이트입니다.\n"
+            "처음에 0 상태인 큐비트에 Hadamard 게이트를 적용하면,\n"
+            "측정했을 때 0과 1이 거의 같은 확률로 나옵니다.\n\n"
+            "👉 회로에 Hadamard 게이트를 추가한 뒤 Run Measurement를 눌러 결과를 확인해 보세요.",
+
+        "2. CNOT과 Entanglement":
             "## CNOT과 Entanglement (얽힘)\n\n"
-            "**1. CNOT (Controlled-X):** 이 게이트는 두 큐비트에 작용합니다. 제어 큐비트(Control, '●')가 $\\left|1\\right\\rangle$일 때만 대상 큐비트(Target, '⊕')에 X(NOT) 연산을 적용합니다. 만약 제어 큐비트가 $\\left|0\\right\\rangle$이면 아무 일도 하지 않습니다.\n\n"
-            "**2. Entanglement (얽힘):** Qubit 0에 H 게이트를 적용한 다음, Qubit 0을 제어 큐비트로, Qubit 1을 대상 큐비트로 하는 CNOT 게이트를 적용해 보세요. 이 상태에서 두 큐비트는 **얽힘 상태(Bell State)**가 됩니다. 이 상태에서는 한 큐비트를 측정하면 다른 큐비트의 상태가 즉시 결정됩니다.",
-            
-        "3. 양자 푸리에 변환 (QFT) 기초": 
+            "**1. CNOT 게이트**\n"
+            "CNOT 게이트는 두 개의 큐비트를 사용하는 게이트입니다.\n"
+            "첫 번째 큐비트는 **제어 큐비트**, 두 번째 큐비트는 **대상 큐비트**입니다.\n\n"
+            "제어 큐비트가 1 상태일 때만,\n"
+            "대상 큐비트의 값이 뒤집힙니다.\n"
+            "제어 큐비트가 0 상태라면 아무 일도 일어나지 않습니다.\n\n"
+            "**2. Entanglement (얽힘)**\n"
+            "먼저 첫 번째 큐비트에 Hadamard 게이트를 적용하고,\n"
+            "그 다음 CNOT 게이트를 사용해 두 큐비트를 연결해 보세요.\n\n"
+            "이렇게 만들어진 두 큐비트는 **얽힘 상태**가 됩니다.\n"
+            "얽힘 상태에서는 한 큐비트를 측정하면\n"
+            "다른 큐비트의 상태도 즉시 결정됩니다.\n\n"
+            "👉 이것은 고전 컴퓨터에서는 불가능한 양자 현상입니다.",
+
+        "3. 양자 푸리에 변환 (QFT) 기초":
             "## 양자 푸리에 변환 (QFT) 기초\n\n"
-            "QFT는 Shor의 알고리즘과 같은 복잡한 양자 알고리즘의 핵심 구성 요소입니다. 이는 고전적인 이산 푸리에 변환(DFT)의 양자 버전이며, 중첩된 양자 상태에서 주파수 정보를 추출하는 데 사용됩니다.\n\n"
-            "QFT는 주로 Hadamard 게이트와 조건부 위상 이동 게이트(Controlled Phase Shift Gate, Rz 게이트의 특정 형태)의 조합으로 구현됩니다. 3큐비트 QFT를 구성하여 그 효과를 실험해 보세요.",
-    
-          "4. 초고밀도 코딩 (Superdense Coding)": 
+            "양자 푸리에 변환(QFT)은\n"
+            "양자 컴퓨터에서 매우 중요한 연산 중 하나입니다.\n\n"
+            "고전 컴퓨터의 푸리에 변환이\n"
+            "시간 정보에서 주파수 정보를 찾는 데 사용되듯,\n"
+            "QFT는 양자 상태에 숨겨진 패턴과 위상 정보를 드러냅니다.\n\n"
+            "QFT는 주로 다음 게이트들의 조합으로 이루어집니다:\n"
+            "- Hadamard 게이트\n"
+            "- 제어된 위상 게이트\n\n"
+            "👉 여러 큐비트에 Hadamard 게이트와 제어 게이트를 배치하며\n"
+            "QFT의 기본 구조를 직접 만들어 보세요.",
+
+        "4. 초고밀도 코딩 (Superdense Coding)":
             "## 초고밀도 코딩 (Superdense Coding)\n\n"
-            "**초고밀도 코딩(Superdense Coding)**은 하나의 큐비트 전송만으로 "
-            "**2비트의 고전 정보**를 전달할 수 있음을 보여주는 양자 통신 프로토콜입니다.\n\n"
-            "---\n"
-            "### 🔹 개념 요약\n"
-            "1. **사전 공유된 얽힘 (Bell State)**\n"
-            "   Alice와 Bob은 미리 Bell 상태를 공유합니다.\n\n"
+            "초고밀도 코딩은 매우 놀라운 양자 통신 기법입니다.\n"
+            "이 방법을 사용하면 **큐비트 하나만 전송해도**\n"
+            "**고전적인 정보 2비트**를 전달할 수 있습니다.\n\n"
+            "### 개념 요약\n"
+            "1. **미리 얽힌 상태 공유**\n"
+            "   두 사람(Alice와 Bob)은 먼저 얽힘 상태의 큐비트 한 쌍을 공유합니다.\n\n"
             "2. **Alice의 인코딩**\n"
-            "   Alice는 자신의 큐비트에 다음 연산 중 하나를 적용합니다:\n\n"
-            "   | 전송 비트 | 적용 게이트 |\n"
-            "   |----------|-------------|\n"
-            "   | 00 | I (아무 것도 안 함) |\n"
-            "   | 01 | X |\n"
-            "   | 10 | Z |\n"
-            "   | 11 | X + Z |\n\n"
+            "   Alice는 자신의 큐비트에 특정 게이트를 적용하여\n"
+            "   전달하고 싶은 정보를 인코딩합니다.\n\n"
             "3. **큐비트 전송**\n"
-            "   Alice는 자신의 큐비트를 Bob에게 보냅니다.\n\n"
+            "   Alice는 자신의 큐비트 하나를 Bob에게 보냅니다.\n\n"
             "4. **Bob의 디코딩**\n"
-            "   Bob은 CNOT과 Hadamard 게이트를 사용하여 두 큐비트를 분리한 뒤 측정합니다.\n\n"
-            "---\n"
-            "### 🔬 실습 가이드\n"
-            "- 먼저 Qubit 0과 Qubit 1에 Bell State를 만드세요 (H + CNOT)\n"
-            "- Alice의 큐비트(Qubit 0)에 X 또는 Z 게이트를 적용해 보세요\n"
-            "- Bob 디코딩 회로를 구성한 뒤 측정을 실행하고 결과를 확인하세요\n\n"
-            "👉 하나의 큐비트 전송으로 2비트 정보가 전달되는 것을 직접 확인해 보세요!",
+            "   Bob은 CNOT과 Hadamard 게이트를 사용해\n"
+            "   Alice가 보낸 정보를 읽어냅니다.\n\n"
+            "👉 하나의 큐비트로 두 비트 정보를 전달할 수 있다는 점이 핵심입니다.",
 
         "5. Deutsch Jozsa Algorithm":
-        "## Deutsch Jozsa Algorithm\n\n"
-        "숨겨진 함수 f(x)가 **constant** 인지 **balanced** 인지를\n"
-        "단 한 번의 oracle 호출로 판별하는 양자 알고리즘입니다.\n\n"
-        "이 튜토리얼에서는:\n"
-        "• Hadamard를 이용한 양자 병렬성\n"
-        "• Oracle을 블랙박스로 사용하는 이유\n"
-        "• 측정 결과가 의미하는 바\n\n"
-        "를 직접 회로를 구성하며 체험합니다."    
-
+            "## Deutsch Jozsa Algorithm\n\n"
+            "Deutsch–Jozsa 알고리즘은\n"
+            "어떤 함수가 **항상 같은 값을 내는 함수인지**\n"
+            "아니면 **입력에 따라 값이 섞여 나오는 함수인지**를\n"
+            "단 한 번의 계산으로 판별하는 알고리즘입니다.\n\n"
+            "고전 컴퓨터라면 여러 번 계산해야 하지만,\n"
+            "양자 컴퓨터는 중첩과 간섭을 이용해\n"
+            "단 한 번의 실행으로 답을 얻을 수 있습니다.\n\n"
+            "이 튜토리얼에서는 다음을 직접 확인합니다:\n"
+            "- Hadamard 게이트로 여러 입력을 동시에 계산하는 방법\n"
+            "- Oracle을 블랙박스로 취급하는 이유\n"
+            "- 측정 결과가 함수의 성질을 어떻게 알려주는지\n\n"
+            "👉 회로를 하나씩 완성하며 알고리즘의 흐름을 이해해 보세요."
     }
+
 
     def __init__(self):
         super().__init__()
@@ -1544,14 +1567,14 @@ class TutorialTab(QWidget):
         self.view = CircuitView()
         self.palette = PaletteView(self.view)
         # 스크롤 없이도 모두 보이도록 고정 높이로 조정 (튜토리얼 전용)
-        CIRCUIT_HEIGHT = 500
+        CIRCUIT_HEIGHT = 425
 
         self.view.setFixedHeight(CIRCUIT_HEIGHT)
         self.palette.setFixedHeight(CIRCUIT_HEIGHT)
         # 튜토리얼에서는 scene 크기도 고정하여 큐비트 수와 무관하게 일관된 높이 유지
         self.view.setSceneRect(0, 0, self.view.get_right_end() + 200, CIRCUIT_HEIGHT)
 
-        from PyQt6.QtWidgets import QSizePolicy
+
         # 수직 확장을 막아 과도한 높이 점유 방지
         self.view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.palette.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
@@ -1563,8 +1586,27 @@ class TutorialTab(QWidget):
 
         self.step_instruction = QTextEdit()
         self.step_instruction.setReadOnly(True)
-        # 설명 영역 높이를 모든 튜토리얼에서 동일하게 고정
-        self.step_instruction.setFixedHeight(130)
+
+        self.step_instruction.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.step_instruction.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+
+        self.step_instruction.setSizeAdjustPolicy(
+            QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored
+        )
+
+        self.step_instruction.setMinimumHeight(130)
+        self.step_instruction.setMaximumHeight(130)
+
+        self.step_instruction.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed
+        )
+
+
 
         # -----------------------------
         # Buttons
@@ -1604,16 +1646,32 @@ class TutorialTab(QWidget):
         right_btns.addLayout(upper_btns)
         right_btns.addLayout(lower_btns)
 
-        # --- 전체 하단 레이아웃
-        footer = QHBoxLayout()
-        footer.addStretch()      # 왼쪽 비우기
-        footer.addLayout(right_btns)
+        # --- 전체 하단 레이아웃 (고정 위젯)
+        footer_layout = QHBoxLayout()
+        footer_layout.setContentsMargins(0, 0, 0, 0)
+        footer_layout.setSpacing(6)
+
+        footer_layout.addStretch()
+        footer_layout.addLayout(right_btns)
+
+        footer_widget = QWidget()
+        footer_widget.setLayout(footer_layout)
+
+        # ★ 하단 고정의 핵심
+        footer_widget.setFixedHeight(72)
+        footer_widget.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed
+        )
+
+        step_layout.addWidget(footer_widget, 0)
+
 
         # --- 전체 페이지 레이아웃
         # 스크롤 제거: 제목/회로/설명을 모두 고정 배치 (위쪽 정렬)
         step_layout.addLayout(circuit_box, 0)
-        step_layout.addWidget(self.step_instruction)
-        step_layout.addLayout(footer)
+        step_layout.addWidget(self.step_instruction,0) 
+        step_layout.addWidget(footer_widget, 0)
 
         self.stack.addWidget(self.page_step)
 
@@ -1773,130 +1831,255 @@ class TutorialTab(QWidget):
         # Hadamard Gate Tutorial
         # -----------------------------
         hadamard_steps = [
+
+            # 1️⃣ |0⟩ 상태 확인
             TutorialStep(
                 title="기본 상태 |0⟩",
-                instruction="아무 게이트도 배치하지 말고 측정해 보세요.",
+                instruction="아무 게이트도 배치하지 말고 회로를 확인하세요.",
                 expected=lambda infos: len(infos) == 0,
-                hint="이번 단계에서는 게이트를 두지 않습니다."
+                hint="초기 상태는 |0⟩입니다."
             ),
 
+            # 2️⃣ 단일 Hadamard
             TutorialStep(
-                title="Hadamard로 중첩 만들기",
-                instruction="q[0]에 Hadamard 게이트를 배치하세요.",
+                title="중첩 상태 만들기",
+                instruction="q[0]에 Hadamard 게이트를 하나 배치하세요.",
                 expected=lambda infos: (
-                    len(infos) == 1 and infos[0].gate_type == 'H'
+                    len(infos) == 1 and
+                    infos[0].gate_type == 'H' and
+                    infos[0].target == 0
                 ),
-                hint="H 게이트를 q[0]에 하나만 배치하세요."
+                hint="H(q0)는 |0⟩을 중첩 상태로 만듭니다."
             ),
 
+
+            # 4️⃣ 가역성
             TutorialStep(
                 title="Hadamard는 가역적이다",
-                instruction="q[0]에 Hadamard 게이트를 두 번 배치하세요.",
+                instruction="q[0]에 Hadamard를 두 번 연속 배치하세요.",
                 expected=lambda infos: (
                     len(infos) == 2 and
-                    all(g.gate_type == 'H' for g in infos)
+                    infos[0].gate_type == 'H' and
+                    infos[1].gate_type == 'H' and
+                    infos[0].target == infos[1].target == 0
                 ),
-                hint="같은 큐비트에 H를 두 번 연속 배치하세요."
-            )
-    
+                hint="H ∘ H = I 입니다."
+            ),
+
+            # 5️⃣ 위상 변화
+            TutorialStep(
+                title="위상 정보의 존재",
+                instruction="Hadamard 뒤에 Z 게이트를 추가하세요.",
+                expected=lambda infos: (
+                    len(infos) == 2 and
+                    infos[0].gate_type == 'H' and
+                    infos[1].gate_type == 'Z'
+                ),
+                hint="확률은 같아도 위상은 달라질 수 있습니다."
+            ),
+            
+            TutorialStep( 
+                title="고전 비트와의 차이", 
+                instruction="왜 이 결과가 고전 비트와 다른지 생각해 보세요. 별도의 조작을 가할 필요는 없습니다.", 
+                expected=lambda infos: True, hint="양자 상태는 측정 전까지 확정되지 않습니다." ),
         ]
+
 
         # -----------------------------
         # CNOT Tutorial
         # -----------------------------
         cnot_steps = [
-                TutorialStep(
-                    title="고전적 상관관계",
-                    instruction="q[0]에 X 게이트를 적용한 뒤 CNOT을 구성하세요.",
-                    expected=lambda infos: (
-                        any(g.gate_type == 'X' for g in infos) and
-                        any(g.gate_type == 'CTRL' for g in infos)
-                    ),
-                    hint="X(q0) → CNOT(q0→q1) 순서입니다."
-                ),
 
-                TutorialStep(
-                    title="Bell State 만들기",
-                    instruction="Hadamard와 CNOT으로 Bell 상태를 만드세요.",
-                    expected=lambda infos: (
-                        any(g.gate_type == 'H' for g in infos) and
-                        any(g.gate_type == 'CTRL' for g in infos)
-                    ),
-                    hint="H(q0) 다음 CNOT(q0→q1) 입니다."
+            # 1️⃣ 고전적 준비
+            TutorialStep(
+                title="제어 비트 준비",
+                instruction="q[0]에 X 게이트를 배치하세요.",
+                expected=lambda infos: (
+                    len(infos) == 1 and
+                    infos[0].gate_type == 'X' and
+                    infos[0].target == 0
                 ),
+                hint="제어 큐비트를 |1⟩로 만듭니다."
+            ),
 
-                TutorialStep(
-                    title="얽힘은 단순한 복사가 아니다",
-                    instruction="Bell 상태를 유지한 채 회로를 확인하세요.",
-                    expected=lambda infos: (
-                        any(g.gate_type == 'H' for g in infos) and
-                        any(g.gate_type == 'CTRL' for g in infos)
-                    ),
-                    hint="얽힘 상태에서는 두 큐비트를 독립적으로 설명할 수 없습니다."
-                )
+            # 2️⃣ 고전적 상관관계
+            TutorialStep(
+                title="고전적 상관관계",
+                instruction="q[0] → q[1] 방향으로 CNOT을 구성하세요.",
+                expected=lambda infos: (
+                    len(infos) == 2 and
+                    infos[1].gate_type == 'CTRL' and
+                    infos[1].control == 0 and
+                    infos[1].target == 1
+                ),
+                hint="CNOT은 제어가 핵심입니다."
+            ),
+
+            # 3️⃣ Bell 상태 준비
+            TutorialStep(
+                title="Bell 상태 만들기",
+                instruction="X 대신 Hadamard로 Bell 상태를 만드세요.",
+                expected=lambda infos: (
+                    len(infos) == 2 and
+                    infos[0].gate_type == 'H' and
+                    infos[1].gate_type == 'CTRL'
+                ),
+                hint="H(q0) → CNOT(q0→q1)"
+            ),
+
+            # 4️⃣ 순서 강제
+            TutorialStep(
+                title="순서가 바뀌면 얽힘이 아니다",
+                instruction="Hadamard가 먼저 와야 합니다.",
+                expected=lambda infos: (
+                    infos[0].gate_type == 'H' and
+                    infos[1].gate_type == 'CTRL'
+                ),
+                hint="연산은 교환되지 않습니다."
+            ),
+
+            # 5️⃣ 제어/타겟 비대칭성
+            TutorialStep(
+                title="CNOT은 대칭이 아니다",
+                instruction="제어와 타겟을 바꿔보세요.",
+                expected=lambda infos: (
+                    infos[-1].gate_type == 'CTRL' and
+                    infos[-1].control == 1 and
+                    infos[-1].target == 0
+                ),
+                hint="얽힘은 방향성을 가집니다."
+            ),
         ]
+
 
         # -----------------------------
         # QFT Tutorial (Skeleton)
         # -----------------------------
         qft_steps = [
             TutorialStep(
-                title="QFT의 핵심 구성요소",
-                instruction="Hadamard 게이트를 사용해 QFT 구조를 시작하세요.",
-                expected=lambda infos: any(g.gate_type == 'H' for g in infos),
-                hint="QFT는 Hadamard로 시작합니다."
+                title="QFT의 시작",
+                instruction="q[0]에 Hadamard 게이트를 배치하세요.",
+                expected=lambda infos: (
+                    len(infos) >= 1 and
+                    infos[0].gate_type == 'H' and
+                    infos[0].target == 0
+                ),
+                hint="QFT는 각 큐비트에 대한 Fourier 변환으로 시작합니다."
             ),
 
             TutorialStep(
-                title="제어 위상 게이트",
-                instruction="제어 게이트를 추가해 위상 관계를 만드세요.",
-                expected=lambda infos: any(g.gate_type == 'CTRL' for g in infos),
-                hint="QFT에는 제어 연산이 반드시 포함됩니다."
+                title="제어 위상 연산",
+                instruction="q[0]이 q[1]에 위상을 주도록 제어 게이트를 추가하세요.",
+                expected=lambda infos: (
+                    len(infos) >= 2 and
+                    infos[1].gate_type == 'CTRL' and
+                    infos[1].control == 0 and
+                    infos[1].target == 1
+                ),
+                hint="위상 정보는 다른 큐비트와의 관계로 저장됩니다."
+            ),
+            
+            TutorialStep(
+                title="두 번째 Hadamard",
+                instruction="q[1]에 Hadamard 게이트를 배치하세요.",
+                expected=lambda infos: (
+                    len(infos) >= 3 and
+                    infos[2].gate_type == 'H' and
+                    infos[2].target == 1
+                ),
+                hint="각 큐비트는 자신의 Fourier 변환을 가집니다."
+            ),
+            
+            TutorialStep(
+                title="순서의 중요성",
+                instruction="Hadamard → 제어 위상 → Hadamard 순서를 유지하세요.",
+                expected=lambda infos: (
+                    len(infos) == 3 and
+                    infos[0].gate_type == 'H' and
+                    infos[1].gate_type == 'CTRL' and
+                    infos[2].gate_type == 'H'
+                ),
+                hint="연산 순서가 바뀌면 Fourier 변환이 아닙니다."
+            ),
+            
+            TutorialStep(
+                title="출력 비트 순서",
+                instruction="QFT의 출력 순서가 입력과 반대임을 확인하세요.",
+                expected=lambda infos: (
+                    len(infos) == 3  # 아직 SWAP 미구현 → 개념 확인 단계
+                ),
+                hint="QFT 결과는 비트 순서가 뒤집혀 나타납니다."
             ),
 
             TutorialStep(
                 title="QFT는 가역적이다",
-                instruction="QFT 뒤에 역연산을 구성한다고 상상해 보세요.",
-                expected=lambda infos: len(infos) >= 2,
-                hint="모든 양자 게이트는 되돌릴 수 있습니다."
-            )
+                instruction="지금 회로의 역연산이 존재함을 생각해 보세요.",
+                expected=lambda infos: (
+                    len(infos) == 3
+                ),
+                hint="모든 양자 연산은 유니터리이며 되돌릴 수 있습니다."
+            ),
+
         ]
 
         # -----------------------------
         # Superdense Coding Tutorial
         # -----------------------------
         superdense_steps = [
+
+            # 1️⃣ 공유 자원
             TutorialStep(
-                title="Bell Pair 준비",
-                instruction="Alice와 Bob이 공유할 Bell 상태를 준비하세요.",
+                title="Bell Pair 공유",
+                instruction="Alice(q0)와 Bob(q1)의 Bell 상태를 준비하세요.",
                 expected=lambda infos: (
-                    any(g.gate_type == 'H' for g in infos) and
-                    any(g.gate_type == 'CTRL' for g in infos)
+                    len(infos) == 2 and
+                    infos[0].gate_type == 'H' and
+                    infos[1].gate_type == 'CTRL'
                 ),
-                hint="H(q0) → CNOT(q0→q1)"
+                hint="통신 전에 얽힘이 준비되어야 합니다."
             ),
 
+            # 2️⃣ 단일 비트 인코딩
             TutorialStep(
-                title="Alice의 인코딩",
-                instruction="Alice가 자신의 큐비트에 X 또는 Z를 적용하세요.",
-                expected=lambda infos: any(
-                    g.gate_type in ('X', 'Z') for g in infos
+                title="1비트 인코딩",
+                instruction="Alice의 큐비트에 X를 적용하세요.",
+                expected=lambda infos: (
+                    any(g.gate_type == 'X' and g.target == 0 for g in infos)
                 ),
-                hint="보낼 비트에 따라 X 또는 Z를 선택하세요."
+                hint="X는 첫 번째 비트를 인코딩합니다."
             ),
 
+            # 3️⃣ 위상 비트
             TutorialStep(
-                title="Bob의 디코딩",
-                instruction="Bob의 디코딩 회로를 완성하세요.",
+                title="위상 비트 인코딩",
+                instruction="Alice의 큐비트에 Z를 적용하세요.",
                 expected=lambda infos: (
-                    any(g.gate_type == 'CTRL' for g in infos) and
-                    any(g.gate_type == 'H' for g in infos)
+                    any(g.gate_type == 'Z' and g.target == 0 for g in infos)
                 ),
-                hint="CNOT 후 Hadamard가 필요합니다."
-            )
+                hint="Z는 두 번째 비트를 인코딩합니다."
+            ),
 
-        
+            # 4️⃣ 디코딩 준비
+            TutorialStep(
+                title="Bob의 디코딩 (CNOT)",
+                instruction="Bob이 CNOT으로 디코딩을 시작하세요.",
+                expected=lambda infos: (
+                    infos[-2].gate_type == 'CTRL'
+                ),
+                hint="Bob은 Bell 측정을 수행합니다."
+            ),
+
+            # 5️⃣ 디코딩 완성
+            TutorialStep(
+                title="Hadamard로 디코딩 완료",
+                instruction="Hadamard로 디코딩을 완성하세요.",
+                expected=lambda infos: (
+                    infos[-1].gate_type == 'H'
+                ),
+                hint="이제 두 비트가 복원됩니다."
+            ),
         ]
+
 
         deutsch_jozsa_steps = [
             TutorialStep(
@@ -1928,11 +2111,11 @@ class TutorialTab(QWidget):
             TutorialStep(
                 title="Oracle 정의하기",
                 instruction=(
-                    "숨겨진 함수 f(x)를 정의합니다.\n\n"
+                    "숨겨진 함수 f(x)를 정의합니다. Define Oracle 버튼을 눌러 함수를 정의하세요.\n\n"
                     "• constant / balanced 중 선택\n"
                     "• constant: 출력이 항상 0 또는 1\n"
                     "• balanced: 00,01,10,11 중 두 개만 1\n\n"
-                    "Define Oracle 버튼을 눌러 정의하세요."
+                    
                 ),
                 expected=lambda infos: True,  # check_step에서 특별 처리
                 hint="Define Oracle 버튼을 눌러 constant 또는 balanced를 선택하세요.",
@@ -1952,11 +2135,11 @@ class TutorialTab(QWidget):
             TutorialStep(
                 title="입력 큐비트 측정 및 판별",
                 instruction=(
-                    "모든 입력 큐비트 q[0], q[1]에 측정(M) 게이트를 배치하세요.\n\n"
+                    "모든 입력 큐비트 q[0], q[1]에 측정(M) 게이트를 배치하세요. M 게이트 배치 후 Check를 눌러 판별합니다.\n\n"
                     "예상 결과:\n"
                     "• constant → 측정 결과가 모두 |00⟩\n"
                     "• balanced → 측정 결과에 |00⟩이 거의 없음 (|01⟩, |10⟩, |11⟩ 중 하나)\n\n"
-                    "M 게이트 배치 후 Check를 눌러 판별합니다."
+                    
                 ),
                 expected=lambda infos: (
                     any(g.gate_type == "MEASURE" and g.row == 0 for g in infos) and
@@ -2030,6 +2213,13 @@ class TutorialTab(QWidget):
 
         self.step_title.setText(step.title)
         self.step_instruction.setText(step.instruction)
+
+        # 🔧 전체화면에서 QTextEdit height 재계산 방지
+        self.step_instruction.document().setTextWidth(
+            self.step_instruction.viewport().width()
+        )
+        self.step_instruction.updateGeometry()
+
 
         # 안전한 리셋 (잠시 기능 비활성화)
         """for (r, c), g in list(self.view.circuit.items()):
