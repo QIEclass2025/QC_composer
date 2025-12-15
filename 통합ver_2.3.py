@@ -1791,12 +1791,12 @@ class TutorialTab(QWidget):
 
             TutorialStep(
                 title="Hadamard는 가역적이다",
-                instruction="q[0]에 Hadamard 게이트를 두 번 배치하세요.",
+                instruction="q[0]에 Hadamard 게이트를 두 번 배치한 후, M(측정) 게이트를 q[0]에 배치하세요.",
                 expected=lambda infos: (
-                    len(infos) == 2 and
-                    all(g.gate_type == 'H' for g in infos)
+                    sum(1 for g in infos if g.gate_type == 'H') == 2 and
+                    any(g.gate_type == 'MEASURE' and g.row == 0 for g in infos)
                 ),
-                hint="같은 큐비트에 H를 두 번 연속 배치하세요."
+                hint="같은 큐비트에 H를 두 번 연속 배치한 후 M 게이트를 놓으세요."
             )
     
         ]
@@ -1827,12 +1827,14 @@ class TutorialTab(QWidget):
 
                 TutorialStep(
                     title="얽힘은 단순한 복사가 아니다",
-                    instruction="Bell 상태를 유지한 채 회로를 확인하세요.",
+                    instruction="Bell 상태를 유지한 채 q[0]과 q[1] 모두에 M(측정) 게이트를 배치하세요.",
                     expected=lambda infos: (
                         any(g.gate_type == 'H' for g in infos) and
-                        any(g.gate_type == 'CTRL' for g in infos)
+                        any(g.gate_type == 'CTRL' for g in infos) and
+                        any(g.gate_type == 'MEASURE' and g.row == 0 for g in infos) and
+                        any(g.gate_type == 'MEASURE' and g.row == 1 for g in infos)
                     ),
-                    hint="얽힘 상태에서는 두 큐비트를 독립적으로 설명할 수 없습니다."
+                    hint="얽힘 상태에서는 두 큐비트를 독립적으로 설명할 수 없습니다. q[0]과 q[1] 모두에 M 게이트를 놓으세요."
                 )
         ]
 
@@ -1856,9 +1858,12 @@ class TutorialTab(QWidget):
 
             TutorialStep(
                 title="QFT는 가역적이다",
-                instruction="QFT 뒤에 역연산을 구성한다고 상상해 보세요.",
-                expected=lambda infos: len(infos) >= 2,
-                hint="모든 양자 게이트는 되돌릴 수 있습니다."
+                instruction="QFT 뒤에 역연산을 구성하고, 측정(M) 게이트를 q[0]에 배치하세요.",
+                expected=lambda infos: (
+                    len(infos) >= 2 and
+                    any(g.gate_type == 'MEASURE' and g.row == 0 for g in infos)
+                ),
+                hint="모든 양자 게이트는 되돌릴 수 있습니다. 측정 게이트를 추가해주세요."
             )
         ]
 
@@ -1887,12 +1892,14 @@ class TutorialTab(QWidget):
 
             TutorialStep(
                 title="Bob의 디코딩",
-                instruction="Bob의 디코딩 회로를 완성하세요.",
+                instruction="Bob의 디코딩 회로를 완성하고 q[0]과 q[1]에 측정(M) 게이트를 배치하세요.",
                 expected=lambda infos: (
                     any(g.gate_type == 'CTRL' for g in infos) and
-                    any(g.gate_type == 'H' for g in infos)
+                    any(g.gate_type == 'H' for g in infos) and
+                    any(g.gate_type == 'MEASURE' and g.row == 0 for g in infos) and
+                    any(g.gate_type == 'MEASURE' and g.row == 1 for g in infos)
                 ),
-                hint="CNOT 후 Hadamard가 필요합니다."
+                hint="CNOT 후 Hadamard가 필요합니다. 그 후 q[0]과 q[1]에 M 게이트를 놓으세요."
             )
 
         
@@ -2266,7 +2273,60 @@ class TutorialTab(QWidget):
 
         # 일반 단계 검증
         if step.expected(infos):
-            QMessageBox.information(self, "Success", "정확합니다!")
+            # MEASURE 게이트가 있으면 시뮬레이션 실행
+            has_measure = any(g.gate_type == "MEASURE" for g in infos)
+            if has_measure:
+                try:
+                    qc = self.build_qiskit_circuit()
+                    sim = AerSimulator()
+                    shots = 1024
+                    res = sim.run(qc, shots=shots).result()
+                    counts = res.get_counts()
+                    
+                    # 측정된 큐비트 찾기
+                    measured_qubits = set()
+                    for g in infos:
+                        if g.gate_type == "MEASURE":
+                            measured_qubits.add(g.row)
+                    
+                    n_measured = len(measured_qubits)
+                    
+                    # 측정된 비트만 추출
+                    if n_measured < self.view.n_qubits:
+                        filtered_counts = {}
+                        for bitstring, count in counts.items():
+                            clean = bitstring.replace(" ", "")
+                            truncated = clean[-n_measured:] if n_measured > 0 else ""
+                            filtered_counts[truncated] = filtered_counts.get(truncated, 0) + count
+                        counts = filtered_counts
+                    
+                    # 측정 결과를 보기 좋게 포맷팅
+                    result_lines = [
+                        "═" * 60,
+                        "📊 양자 측정 결과",
+                        "═" * 60,
+                        f"\n총 시행 횟수: {shots}번\n",
+                        "주의: 결과는 리틀엔디언(Little Endian) 형식으로 표시됩니다.",
+                        "      (오른쪽이 q[0], 왼쪽이 q[n-1]입니다)\n",
+                        "측정 결과:",
+                        "─" * 60
+                    ]
+                    
+                    # 결과를 확률 순서로 정렬
+                    sorted_counts = sorted(counts.items(), key=lambda x: x[1], reverse=True)
+                    for bitstring, count in sorted_counts:
+                        clean_bitstring = bitstring.replace(" ", "")
+                        percentage = (count / shots) * 100
+                        result_lines.append(f"|{clean_bitstring}⟩: {count:4d}회 ({percentage:6.2f}%)")
+                    
+                    result_lines.append("═" * 60)
+                    result_text = "\n".join(result_lines)
+                    
+                    QMessageBox.information(self, "Success", f"정확합니다!\n\n{result_text}")
+                except Exception as e:
+                    QMessageBox.warning(self, "Simulation Error", f"{e}")
+            else:
+                QMessageBox.information(self, "Success", "정확합니다!")
         else:
             QMessageBox.warning(self, "Try again", "조건을 만족하지 않습니다.")
 
@@ -2384,6 +2444,9 @@ class TutorialTab(QWidget):
                     elif g.gate_type=="RX": qc.rx(g.angle if g.angle is not None else 0, g.row)
                     elif g.gate_type=="RY": qc.ry(g.angle if g.angle is not None else 0, g.row)
                     elif g.gate_type=="RZ": qc.rz(g.angle if g.angle is not None else 0, g.row)
+                    elif g.gate_type == "MEASURE":
+                        measured_qubits.add(g.row)
+                        qc.measure(g.row, g.row)
 
                 ctrls = [g.row for g in ops if g.gate_type=="CTRL"]
                 xt = [g.row for g in ops if g.gate_type=="X_T"]
@@ -2417,6 +2480,9 @@ class TutorialTab(QWidget):
                     elif g.gate_type=="RX": qc.rx(g.angle if g.angle is not None else 0, g.row)
                     elif g.gate_type=="RY": qc.ry(g.angle if g.angle is not None else 0, g.row)
                     elif g.gate_type=="RZ": qc.rz(g.angle if g.angle is not None else 0, g.row)
+                    elif g.gate_type == "MEASURE":
+                        measured_qubits.add(g.row)
+                        qc.measure(g.row, g.row)
 
                 ctrls = [g.row for g in ops if g.gate_type=="CTRL"]
                 xt = [g.row for g in ops if g.gate_type=="X_T"]
@@ -2433,12 +2499,6 @@ class TutorialTab(QWidget):
                     if len(ctrls)==0: qc.z(t)
                     elif len(ctrls)==1: qc.cz(ctrls[0], t)
                     else: qc.mcz(ctrls, t)
-
-                # 측정 게이트 처리: 해당 큐비트만 측정
-                for g in ops:
-                    if g.gate_type == "MEASURE":
-                        measured_qubits.add(g.row)
-                        qc.measure(g.row, g.row)
 
             # 측정 게이트가 없으면 경고
             if not measured_qubits:
