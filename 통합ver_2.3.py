@@ -10,12 +10,12 @@ import math
 from dataclasses import dataclass
 from typing import Dict, Tuple, Optional, List, Callable
 
-from PyQt6.QtWidgets import (
+from PyQt6.QtWidgets import (QAbstractScrollArea,
     QApplication,QProgressBar, QWidget, QHBoxLayout, QVBoxLayout,
     QGraphicsView, QGraphicsScene, QGraphicsRectItem, QGraphicsItem,
     QGraphicsTextItem, QLabel, QPushButton, QMessageBox,
     QTabWidget, QDialog, QTextEdit, QInputDialog, QGraphicsDropShadowEffect,
-    QSplitter, QScrollArea, QSizePolicy,QListWidget,QStackedWidget, QRadioButton, QGroupBox, QGridLayout, QCheckBox      # tutorial용 import
+    QSplitter,QFrame, QScrollArea, QSizePolicy,QListWidget,QStackedWidget, QRadioButton, QGroupBox, QGridLayout, QCheckBox      # tutorial용 import
 )
 from PyQt6.QtGui import QColor, QPen, QPainter, QFont, QBrush, QLinearGradient, QCursor, QDrag
 from PyQt6.QtCore import Qt, QRectF, QPointF, QMimeData, qInstallMessageHandler, QtMsgType
@@ -1544,14 +1544,14 @@ class TutorialTab(QWidget):
         self.view = CircuitView()
         self.palette = PaletteView(self.view)
         # 스크롤 없이도 모두 보이도록 고정 높이로 조정 (튜토리얼 전용)
-        CIRCUIT_HEIGHT = 500
+        CIRCUIT_HEIGHT = 425
 
         self.view.setFixedHeight(CIRCUIT_HEIGHT)
         self.palette.setFixedHeight(CIRCUIT_HEIGHT)
         # 튜토리얼에서는 scene 크기도 고정하여 큐비트 수와 무관하게 일관된 높이 유지
         self.view.setSceneRect(0, 0, self.view.get_right_end() + 200, CIRCUIT_HEIGHT)
 
-        from PyQt6.QtWidgets import QSizePolicy
+
         # 수직 확장을 막아 과도한 높이 점유 방지
         self.view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.palette.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
@@ -1563,8 +1563,27 @@ class TutorialTab(QWidget):
 
         self.step_instruction = QTextEdit()
         self.step_instruction.setReadOnly(True)
-        # 설명 영역 높이를 모든 튜토리얼에서 동일하게 고정
-        self.step_instruction.setFixedHeight(130)
+
+        self.step_instruction.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.step_instruction.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+
+        self.step_instruction.setSizeAdjustPolicy(
+            QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored
+        )
+
+        self.step_instruction.setMinimumHeight(130)
+        self.step_instruction.setMaximumHeight(130)
+
+        self.step_instruction.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed
+        )
+
+
 
         # -----------------------------
         # Buttons
@@ -1604,16 +1623,32 @@ class TutorialTab(QWidget):
         right_btns.addLayout(upper_btns)
         right_btns.addLayout(lower_btns)
 
-        # --- 전체 하단 레이아웃
-        footer = QHBoxLayout()
-        footer.addStretch()      # 왼쪽 비우기
-        footer.addLayout(right_btns)
+        # --- 전체 하단 레이아웃 (고정 위젯)
+        footer_layout = QHBoxLayout()
+        footer_layout.setContentsMargins(0, 0, 0, 0)
+        footer_layout.setSpacing(6)
+
+        footer_layout.addStretch()
+        footer_layout.addLayout(right_btns)
+
+        footer_widget = QWidget()
+        footer_widget.setLayout(footer_layout)
+
+        # ★ 하단 고정의 핵심
+        footer_widget.setFixedHeight(72)
+        footer_widget.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed
+        )
+
+        step_layout.addWidget(footer_widget, 0)
+
 
         # --- 전체 페이지 레이아웃
         # 스크롤 제거: 제목/회로/설명을 모두 고정 배치 (위쪽 정렬)
         step_layout.addLayout(circuit_box, 0)
-        step_layout.addWidget(self.step_instruction)
-        step_layout.addLayout(footer)
+        step_layout.addWidget(self.step_instruction,0) 
+        step_layout.addWidget(footer_widget, 0)
 
         self.stack.addWidget(self.page_step)
 
@@ -2030,6 +2065,13 @@ class TutorialTab(QWidget):
 
         self.step_title.setText(step.title)
         self.step_instruction.setText(step.instruction)
+
+        # 🔧 전체화면에서 QTextEdit height 재계산 방지
+        self.step_instruction.document().setTextWidth(
+            self.step_instruction.viewport().width()
+        )
+        self.step_instruction.updateGeometry()
+
 
         # 안전한 리셋 (잠시 기능 비활성화)
         """for (r, c), g in list(self.view.circuit.items()):
