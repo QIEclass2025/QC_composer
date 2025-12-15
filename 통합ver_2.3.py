@@ -1407,59 +1407,82 @@ def is_balanced_truth_table(truth_table: dict[str, int]) -> bool:
 class TutorialTab(QWidget):
 
     TUTORIAL_DATA = {
-        "1. Qubit과 Hadamard Gate": 
+        "1. Qubit과 Hadamard Gate":
             "## Qubit과 Hadamard Gate\n\n"
-            "**1. Qubit (양자 비트):** 고전적인 비트(0 또는 1)와 달리, 큐비트는 $\\left|0\\right\\rangle$과 $\\left|1\\right\\rangle$ 상태의 **중첩(Superposition)** 상태를 가질 수 있습니다. 이는 동시에 여러 값을 나타낼 수 있음을 의미하며, 계산의 병렬성을 부여합니다.\n\n"
-            "**2. Hadamard (H) Gate:** 이 게이트는 큐비트를 순수한 $\\left|0\\right\\rangle$ 또는 $\\left|1\\right\\rangle$ 상태에서 완벽한 중첩 상태로 만듭니다. 회로에 H 게이트를 추가하고 Run Measurement를 실행하여 결과를 확인해 보세요.",
-        
-        "2. CNOT과 Entanglement": 
+            "**1. Qubit (양자 비트)**\n"
+            "고전적인 비트는 0 또는 1 중 하나의 값만 가질 수 있습니다.\n"
+            "하지만 큐비트는 0 상태와 1 상태가 동시에 섞인 상태로 존재할 수 있습니다.\n"
+            "이를 **중첩(Superposition)**이라고 부릅니다.\n\n"
+            "중첩 덕분에 양자 컴퓨터는 여러 경우를 동시에 계산할 수 있습니다.\n\n"
+            "**2. Hadamard (H) Gate**\n"
+            "Hadamard 게이트는 큐비트를 중첩 상태로 만들어 주는 가장 기본적인 게이트입니다.\n"
+            "처음에 0 상태인 큐비트에 Hadamard 게이트를 적용하면,\n"
+            "측정했을 때 0과 1이 거의 같은 확률로 나옵니다.\n\n"
+            "👉 회로에 Hadamard 게이트를 추가한 뒤 Run Measurement를 눌러 결과를 확인해 보세요.",
+
+        "2. CNOT과 Entanglement":
             "## CNOT과 Entanglement (얽힘)\n\n"
-            "**1. CNOT (Controlled-X):** 이 게이트는 두 큐비트에 작용합니다. 제어 큐비트(Control, '●')가 $\\left|1\\right\\rangle$일 때만 대상 큐비트(Target, '⊕')에 X(NOT) 연산을 적용합니다. 만약 제어 큐비트가 $\\left|0\\right\\rangle$이면 아무 일도 하지 않습니다.\n\n"
-            "**2. Entanglement (얽힘):** Qubit 0에 H 게이트를 적용한 다음, Qubit 0을 제어 큐비트로, Qubit 1을 대상 큐비트로 하는 CNOT 게이트를 적용해 보세요. 이 상태에서 두 큐비트는 **얽힘 상태(Bell State)**가 됩니다. 이 상태에서는 한 큐비트를 측정하면 다른 큐비트의 상태가 즉시 결정됩니다.",
-            
-        "3. 양자 푸리에 변환 (QFT) 기초": 
+            "**1. CNOT 게이트**\n"
+            "CNOT 게이트는 두 개의 큐비트를 사용하는 게이트입니다.\n"
+            "첫 번째 큐비트는 **제어 큐비트**, 두 번째 큐비트는 **대상 큐비트**입니다.\n\n"
+            "제어 큐비트가 1 상태일 때만,\n"
+            "대상 큐비트의 값이 뒤집힙니다.\n"
+            "제어 큐비트가 0 상태라면 아무 일도 일어나지 않습니다.\n\n"
+            "**2. Entanglement (얽힘)**\n"
+            "먼저 첫 번째 큐비트에 Hadamard 게이트를 적용하고,\n"
+            "그 다음 CNOT 게이트를 사용해 두 큐비트를 연결해 보세요.\n\n"
+            "이렇게 만들어진 두 큐비트는 **얽힘 상태**가 됩니다.\n"
+            "얽힘 상태에서는 한 큐비트를 측정하면\n"
+            "다른 큐비트의 상태도 즉시 결정됩니다.\n\n"
+            "👉 이것은 고전 컴퓨터에서는 불가능한 양자 현상입니다.",
+
+        "3. 양자 푸리에 변환 (QFT) 기초":
             "## 양자 푸리에 변환 (QFT) 기초\n\n"
-            "QFT는 Shor의 알고리즘과 같은 복잡한 양자 알고리즘의 핵심 구성 요소입니다. 이는 고전적인 이산 푸리에 변환(DFT)의 양자 버전이며, 중첩된 양자 상태에서 주파수 정보를 추출하는 데 사용됩니다.\n\n"
-            "QFT는 주로 Hadamard 게이트와 조건부 위상 이동 게이트(Controlled Phase Shift Gate, Rz 게이트의 특정 형태)의 조합으로 구현됩니다. 3큐비트 QFT를 구성하여 그 효과를 실험해 보세요.",
-    
-          "4. 초고밀도 코딩 (Superdense Coding)": 
+            "양자 푸리에 변환(QFT)은\n"
+            "양자 컴퓨터에서 매우 중요한 연산 중 하나입니다.\n\n"
+            "고전 컴퓨터의 푸리에 변환이\n"
+            "시간 정보에서 주파수 정보를 찾는 데 사용되듯,\n"
+            "QFT는 양자 상태에 숨겨진 패턴과 위상 정보를 드러냅니다.\n\n"
+            "QFT는 주로 다음 게이트들의 조합으로 이루어집니다:\n"
+            "- Hadamard 게이트\n"
+            "- 제어된 위상 게이트\n\n"
+            "👉 여러 큐비트에 Hadamard 게이트와 제어 게이트를 배치하며\n"
+            "QFT의 기본 구조를 직접 만들어 보세요.",
+
+        "4. 초고밀도 코딩 (Superdense Coding)":
             "## 초고밀도 코딩 (Superdense Coding)\n\n"
-            "**초고밀도 코딩(Superdense Coding)**은 하나의 큐비트 전송만으로 "
-            "**2비트의 고전 정보**를 전달할 수 있음을 보여주는 양자 통신 프로토콜입니다.\n\n"
-            "---\n"
-            "### 🔹 개념 요약\n"
-            "1. **사전 공유된 얽힘 (Bell State)**\n"
-            "   Alice와 Bob은 미리 Bell 상태를 공유합니다.\n\n"
+            "초고밀도 코딩은 매우 놀라운 양자 통신 기법입니다.\n"
+            "이 방법을 사용하면 **큐비트 하나만 전송해도**\n"
+            "**고전적인 정보 2비트**를 전달할 수 있습니다.\n\n"
+            "### 개념 요약\n"
+            "1. **미리 얽힌 상태 공유**\n"
+            "   두 사람(Alice와 Bob)은 먼저 얽힘 상태의 큐비트 한 쌍을 공유합니다.\n\n"
             "2. **Alice의 인코딩**\n"
-            "   Alice는 자신의 큐비트에 다음 연산 중 하나를 적용합니다:\n\n"
-            "   | 전송 비트 | 적용 게이트 |\n"
-            "   |----------|-------------|\n"
-            "   | 00 | I (아무 것도 안 함) |\n"
-            "   | 01 | X |\n"
-            "   | 10 | Z |\n"
-            "   | 11 | X + Z |\n\n"
+            "   Alice는 자신의 큐비트에 특정 게이트를 적용하여\n"
+            "   전달하고 싶은 정보를 인코딩합니다.\n\n"
             "3. **큐비트 전송**\n"
-            "   Alice는 자신의 큐비트를 Bob에게 보냅니다.\n\n"
+            "   Alice는 자신의 큐비트 하나를 Bob에게 보냅니다.\n\n"
             "4. **Bob의 디코딩**\n"
-            "   Bob은 CNOT과 Hadamard 게이트를 사용하여 두 큐비트를 분리한 뒤 측정합니다.\n\n"
-            "---\n"
-            "### 🔬 실습 가이드\n"
-            "- 먼저 Qubit 0과 Qubit 1에 Bell State를 만드세요 (H + CNOT)\n"
-            "- Alice의 큐비트(Qubit 0)에 X 또는 Z 게이트를 적용해 보세요\n"
-            "- Bob 디코딩 회로를 구성한 뒤 측정을 실행하고 결과를 확인하세요\n\n"
-            "👉 하나의 큐비트 전송으로 2비트 정보가 전달되는 것을 직접 확인해 보세요!",
+            "   Bob은 CNOT과 Hadamard 게이트를 사용해\n"
+            "   Alice가 보낸 정보를 읽어냅니다.\n\n"
+            "👉 하나의 큐비트로 두 비트 정보를 전달할 수 있다는 점이 핵심입니다.",
 
         "5. Deutsch Jozsa Algorithm":
-        "## Deutsch Jozsa Algorithm\n\n"
-        "숨겨진 함수 f(x)가 **constant** 인지 **balanced** 인지를\n"
-        "단 한 번의 oracle 호출로 판별하는 양자 알고리즘입니다.\n\n"
-        "이 튜토리얼에서는:\n"
-        "• Hadamard를 이용한 양자 병렬성\n"
-        "• Oracle을 블랙박스로 사용하는 이유\n"
-        "• 측정 결과가 의미하는 바\n\n"
-        "를 직접 회로를 구성하며 체험합니다."    
-
+            "## Deutsch Jozsa Algorithm\n\n"
+            "Deutsch–Jozsa 알고리즘은\n"
+            "어떤 함수가 **항상 같은 값을 내는 함수인지**\n"
+            "아니면 **입력에 따라 값이 섞여 나오는 함수인지**를\n"
+            "단 한 번의 계산으로 판별하는 알고리즘입니다.\n\n"
+            "고전 컴퓨터라면 여러 번 계산해야 하지만,\n"
+            "양자 컴퓨터는 중첩과 간섭을 이용해\n"
+            "단 한 번의 실행으로 답을 얻을 수 있습니다.\n\n"
+            "이 튜토리얼에서는 다음을 직접 확인합니다:\n"
+            "- Hadamard 게이트로 여러 입력을 동시에 계산하는 방법\n"
+            "- Oracle을 블랙박스로 취급하는 이유\n"
+            "- 측정 결과가 함수의 성질을 어떻게 알려주는지\n\n"
+            "👉 회로를 하나씩 완성하며 알고리즘의 흐름을 이해해 보세요."
     }
+
 
     def __init__(self):
         super().__init__()
@@ -1963,11 +1986,11 @@ class TutorialTab(QWidget):
             TutorialStep(
                 title="Oracle 정의하기",
                 instruction=(
-                    "숨겨진 함수 f(x)를 정의합니다.\n\n"
+                    "숨겨진 함수 f(x)를 정의합니다. Define Oracle 버튼을 눌러 함수를 정의하세요.\n\n"
                     "• constant / balanced 중 선택\n"
                     "• constant: 출력이 항상 0 또는 1\n"
                     "• balanced: 00,01,10,11 중 두 개만 1\n\n"
-                    "Define Oracle 버튼을 눌러 정의하세요."
+                    
                 ),
                 expected=lambda infos: True,  # check_step에서 특별 처리
                 hint="Define Oracle 버튼을 눌러 constant 또는 balanced를 선택하세요.",
@@ -1987,11 +2010,11 @@ class TutorialTab(QWidget):
             TutorialStep(
                 title="입력 큐비트 측정 및 판별",
                 instruction=(
-                    "모든 입력 큐비트 q[0], q[1]에 측정(M) 게이트를 배치하세요.\n\n"
+                    "모든 입력 큐비트 q[0], q[1]에 측정(M) 게이트를 배치하세요. M 게이트 배치 후 Check를 눌러 판별합니다.\n\n"
                     "예상 결과:\n"
                     "• constant → 측정 결과가 모두 |00⟩\n"
                     "• balanced → 측정 결과에 |00⟩이 거의 없음 (|01⟩, |10⟩, |11⟩ 중 하나)\n\n"
-                    "M 게이트 배치 후 Check를 눌러 판별합니다."
+                    
                 ),
                 expected=lambda infos: (
                     any(g.gate_type == "MEASURE" and g.row == 0 for g in infos) and
