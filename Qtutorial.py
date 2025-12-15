@@ -1479,7 +1479,6 @@ class TutorialTab(QWidget):
             "단 한 번의 실행으로 답을 얻을 수 있습니다.\n\n"
             "이 튜토리얼에서는 다음을 직접 확인합니다:\n"
             "- Hadamard 게이트로 여러 입력을 동시에 계산하는 방법\n"
-            "- Oracle을 블랙박스로 취급하는 이유\n"
             "- 측정 결과가 함수의 성질을 어떻게 알려주는지\n\n"
             "👉 회로를 하나씩 완성하며 알고리즘의 흐름을 이해해 보세요."
 
@@ -2131,7 +2130,7 @@ class TutorialTab(QWidget):
                     "모든 입력 큐비트 q[0], q[1]에 측정(M) 게이트를 배치하세요.\n\n"
                     "예상 결과:\n"
                     "• constant → 측정 결과가 모두 |00⟩\n"
-                    "• balanced → 측정 결과에 |00⟩이 거의 없음 (|01⟩, |10⟩, |11⟩ 중 하나)\n\n"
+                    "• balanced → 측정 결과에 |00⟩이 없음 (|01⟩, |10⟩, |11⟩ 중 하나)\n\n"
                     "M 게이트 배치 후 Check를 눌러 판별합니다."
                 ),
                 expected=lambda infos: (
@@ -2405,7 +2404,7 @@ class TutorialTab(QWidget):
                 # DJ 알고리즘 판별: 모든 입력 큐비트 측정 결과 확인
                 # 리틀엔디언이므로 오른쪽부터 q[0], q[1], ...
                 # constant: 측정 결과가 모두 00 (입력 큐비트들이 모두 0)
-                # balanced: 측정 결과에 00이 거의 없음
+                # balanced: 측정 결과에 00이  없음
                 # 주의: counts는 이미 필터링되어 측정된 큐비트만 포함
                 total = sum(counts.values()) or 1
                 count_00 = 0
